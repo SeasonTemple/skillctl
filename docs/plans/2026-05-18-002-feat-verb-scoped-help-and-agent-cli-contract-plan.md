@@ -1,7 +1,7 @@
 ---
 title: "feat: verb-scoped progressive CLI help + kernel-generic agent CLI contract doc"
 type: feat
-status: active
+status: completed
 date: 2026-05-18
 ---
 
