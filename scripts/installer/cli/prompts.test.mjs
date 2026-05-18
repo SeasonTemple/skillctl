@@ -118,7 +118,7 @@ test("gatherUninstallChoices: adapter multiselect cancel → CancelledError('uni
 
 // --- gatherInstallChoices: intro hygiene (R7) ---
 
-test("gatherInstallChoices: intro text is product-agnostic — no NetOps literal (R7 hygiene)", async () => {
+test("gatherInstallChoices: intro text is product-agnostic — no skillctl/netops/nexel literal (R7 hygiene)", async () => {
   const p = stub();
   // Drive only far enough to exercise the intro() call; a cancel right
   // after keeps the test from depending on the full picker flow.
