@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   renderBanner, gatherActionChoice, gatherUninstallChoices,
   gatherInstallChoices, CancelledError,
+  confirmPlan, endInteractive, startSpinner,
 } from "./prompts.mjs";
 
 // Minimal injectable prompts stub. clack signals cancel via a sentinel
@@ -162,4 +163,74 @@ test("CancelledError: carries stage + ERR_CANCELLED code, is an Error", () => {
   assert.equal(e.stage, "some-stage");
   assert.ok(e.code, "has ERR_CANCELLED code");
   assert.match(e.message, /cancelled at some-stage/);
+});
+
+// --- confirmPlan / endInteractive / startSpinner (plan 2026-05-18-005 U2) ---
+// Caller-less interactive fns (no kernel/sample caller) — characterization
+// for downstream consumers via the existing injectable `prompts` DI seam.
+
+test("confirmPlan: notes the plan, returns true when confirmed", async () => {
+  const noteCalls = [];
+  const p = stub({ extra: { note: (...a) => noteCalls.push(a), confirm: async () => true } });
+  const ok = await confirmPlan({ planText: "PLAN BODY", noteTitle: "Install plan", prompts: p });
+  assert.equal(ok, true);
+  assert.deepEqual(noteCalls[0], ["PLAN BODY", "Install plan"], "plan text + title noted");
+});
+
+test("confirmPlan: returns false when the user declines", async () => {
+  const p = stub({ extra: { confirm: async () => false } });
+  assert.equal(await confirmPlan({ planText: "x", prompts: p }), false);
+});
+
+test("confirmPlan: default message/noteTitle used when omitted", async () => {
+  const noteCalls = [];
+  const p = stub({ extra: { note: (...a) => noteCalls.push(a), confirm: async () => true } });
+  await confirmPlan({ planText: "x", prompts: p });
+  assert.equal(noteCalls[0][1], "Install plan", "default noteTitle");
+});
+
+test("confirmPlan: cancel → CancelledError('confirm')", async () => {
+  const p = stub({ extra: { confirm: async () => CANCEL } });
+  await assert.rejects(
+    () => confirmPlan({ planText: "x", prompts: p }),
+    (e) => e instanceof CancelledError && e.stage === "confirm" && !!e.code,
+  );
+});
+
+test("endInteractive: ok=true → outro(message), not cancel", async () => {
+  const outro = [], cancel = [];
+  const p = stub({ extra: { outro: (m) => outro.push(m), cancel: (m) => cancel.push(m) } });
+  endInteractive({ ok: true, message: "done", prompts: p });
+  assert.deepEqual(outro, ["done"]);
+  assert.deepEqual(cancel, []);
+});
+
+test("endInteractive: ok=false → cancel(message), not outro", async () => {
+  const outro = [], cancel = [];
+  const p = stub({ extra: { outro: (m) => outro.push(m), cancel: (m) => cancel.push(m) } });
+  endInteractive({ ok: false, message: "aborted", prompts: p });
+  assert.deepEqual(cancel, ["aborted"]);
+  assert.deepEqual(outro, []);
+});
+
+test("startSpinner: starts with the label and delegates update/stop", async () => {
+  const calls = [];
+  const fakeSpinner = {
+    start: (l) => calls.push(["start", l]),
+    message: (m) => calls.push(["message", m]),
+    stop: (m, c) => calls.push(["stop", m, c]),
+  };
+  const p = stub({ extra: { spinner: () => fakeSpinner } });
+  const h = startSpinner({ prompts: p, label: "Crunching" });
+  h.update("halfway");
+  h.stop("done", 0);
+  assert.deepEqual(calls, [["start", "Crunching"], ["message", "halfway"], ["stop", "done", 0]]);
+});
+
+test("startSpinner: default label is product-agnostic (no skillctl/netops/nexel)", async () => {
+  const calls = [];
+  const p = stub({ extra: { spinner: () => ({ start: (l) => calls.push(l), message: () => {}, stop: () => {} }) } });
+  startSpinner({ prompts: p });
+  assert.equal(calls[0], "Working");
+  assert.ok(!/\b(skillctl|netops|nexel)\b/i.test(calls[0]), "default label embeds no product literal");
 });
