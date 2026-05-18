@@ -11,13 +11,13 @@ const PRODUCTION_VERBS = [
 ];
 
 // Sentinel that appears only in the composed full body (flagsBlock), never
-// in a focused per-verb block. skillctl has NO monolithic strings.help.full
+// in a focused per-verb block. nexel has NO monolithic strings.help.full
 // key — the full body is composed at runtime by printHelp from the five
 // strings.help.{header,usage,verbsBlock,flagsBlock,examplesBlock} blocks.
 const FULL_ONLY = "Common flags:";
 
 // Stub product identity — proves renderers are parameterized off
-// productConfig (no hardcoded skillctl/netops).
+// productConfig (no hardcoded product literal — skillctl/netops/nexel).
 const PC = { binName: "stub-bin", skillIdPrefix: "stub" };
 const ADAPTERS = ["claude-code", "codex", "opencode"];
 
@@ -39,13 +39,13 @@ test("strings.help.verb: every production verb has a parameterized renderer", ()
     assert.ok(out && out.length > 0, `verb help for '${v}' must be non-empty`);
     assert.match(out, new RegExp(v), `verb help for '${v}' must name the verb`);
     assert.ok(out.includes("stub-bin"), `verb help for '${v}' must render the passed binName`);
-    assert.ok(!/\b(skillctl|netops)\b/.test(out), `verb help for '${v}' must not embed a literal product name`);
+    assert.ok(!/\b(skillctl|netops|nexel)\b/i.test(out), `verb help for '${v}' must not embed a literal product name`);
     assert.ok(!out.includes(FULL_ONLY), `verb help for '${v}' must not embed the full flag table`);
   }
 });
 
 test("printHelp: composed full body still renders (no strings.help.full key exists)", () => {
-  assert.equal(strings.help.full, undefined, "skillctl must NOT have a monolithic strings.help.full key");
+  assert.equal(strings.help.full, undefined, "nexel must NOT have a monolithic strings.help.full key");
   const out = capture(() => printHelp({ productConfig: PC, version: "9.9.9", adapters: ADAPTERS }));
   assert.match(out, /stub-bin v9\.9\.9 — managed installer/);
   assert.match(out, /Verbs:/);

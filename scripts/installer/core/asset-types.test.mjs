@@ -21,7 +21,7 @@ test("getAssetType: returns the entry for a known type", () => {
 });
 
 test("getAssetType: returns a falsy miss for an unknown type", () => {
-  // skillctl's getAssetType returns null (not undefined) on a miss.
+  // nexel's getAssetType returns null (not undefined) on a miss.
   assert.equal(getAssetType("bundle"), null);
   assert.equal(getAssetType(""), null);
   assert.equal(getAssetType(undefined), null);

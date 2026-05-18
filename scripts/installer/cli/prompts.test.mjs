@@ -47,10 +47,10 @@ function captureStdout(fn) {
 // --- renderBanner: stdout-capture harness (no prompts param; writes
 // directly via figlet). NOT the prompts-stub technique. ---
 
-test("renderBanner: default title is product-agnostic — no NetOps/skillctl literal (R7 hygiene)", () => {
+test("renderBanner: default title is product-agnostic — no skillctl/netops/nexel literal (R7 hygiene)", () => {
   const out = captureStdout(() => renderBanner({ enabled: true }));
   assert.ok(out.length > 0, "banner rendered when enabled");
-  assert.ok(!/NetOps|netops|skillctl/.test(out), `banner must not embed a product literal: ${out.slice(0, 80)}`);
+  assert.ok(!/\b(skillctl|netops|nexel)\b/i.test(out), `banner must not embed a product literal: ${out.slice(0, 80)}`);
 });
 
 test("renderBanner: enabled=false suppresses all output", () => {
@@ -118,7 +118,7 @@ test("gatherUninstallChoices: adapter multiselect cancel → CancelledError('uni
 
 // --- gatherInstallChoices: intro hygiene (R7) ---
 
-test("gatherInstallChoices: intro text is product-agnostic — no NetOps literal (R7 hygiene)", async () => {
+test("gatherInstallChoices: intro text is product-agnostic — no skillctl/netops/nexel literal (R7 hygiene)", async () => {
   const p = stub();
   // Drive only far enough to exercise the intro() call; a cancel right
   // after keeps the test from depending on the full picker flow.
@@ -132,7 +132,7 @@ test("gatherInstallChoices: intro text is product-agnostic — no NetOps literal
   } catch { /* cancel/whatever — we only assert the intro literal */ }
   const intros = p._intro.join(" ");
   assert.ok(intros.length > 0, "intro was called");
-  assert.ok(!/NetOps|netops/.test(intros), `intro must not embed a NetOps literal: ${intros}`);
+  assert.ok(!/\b(skillctl|netops|nexel)\b/i.test(intros), `intro must not embed a product literal: ${intros}`);
 });
 
 test("gatherInstallChoices: plugin-mode happy path returns {mode,adapterId,instructions}", async () => {
