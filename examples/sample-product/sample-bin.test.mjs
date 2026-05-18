@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "bin.mjs");
@@ -122,3 +123,74 @@ test("sample bin: `install help` (reverse order) dispatches the install handler,
   );
   assert.match(r.stderr, /ERR_NO_SELECTION/);
 });
+
+// --- run.mjs verb-handler + cli.mjs composition E2E (plan 003 U3).
+// Spawn is the only honest exit-code/branch coverage for process.exit
+// code (no in-process unit path; refactor is out of scope). ---
+
+test("run: list/agents/plan emit parseable --json envelopes, exit 0", () => {
+  for (const verb of [["list"], ["agents"], ["plan", "--agent", "codex", "--skill", "sample:hello-world"]]) {
+    const r = runBin([...verb, "--json"]);
+    assert.equal(r.code, 0, `${verb[0]} --json exit 0: ${r.stderr}`);
+    assert.doesNotThrow(() => JSON.parse(r.stdout), `${verb[0]} --json is parseable`);
+  }
+});
+
+test("run: list/agents text mode exit 0, output on stdout", () => {
+  for (const verb of ["list", "agents"]) {
+    const r = runBin([verb]);
+    assert.equal(r.code, 0, `${verb} text exit 0`);
+    assert.ok(r.stdout.length > 0, `${verb} writes stdout`);
+  }
+});
+
+test("run: validate exit-code contract (v0.3.1) — 0 clean / 1 finding / 2 precondition", () => {
+  // 0: a valid sample SKILL.md
+  assert.equal(runBin(["validate", "skills/hello-world/SKILL.md"]).code, 0, "valid SKILL.md → 0");
+  // 2: missing path argument (precondition failure)
+  assert.equal(runBin(["validate"]).code, 2, "missing path arg → 2");
+  // 2: file not found (precondition failure)
+  assert.equal(runBin(["validate", "skills/does-not-exist/SKILL.md"]).code, 2, "file-not-found → 2");
+  // 1: a malformed SKILL.md (a lint finding, not a precondition failure)
+  const bad = path.join(HERE, ".u3-bad-SKILL.md");
+  fs.writeFileSync(bad, "---\nname: nope\n---\nno valid frontmatter fields\n");
+  try {
+    assert.equal(runBin(["validate", ".u3-bad-SKILL.md"]).code, 1, "malformed SKILL.md → 1 (finding, not 2)");
+  } finally { fs.rmSync(bad, { force: true }); }
+});
+
+test("run: install with no selection → uniform --json error envelope on stdout (v0.3.1 contract, E2E)", () => {
+  const r = runBin(["install", "--agent", "codex", "-y", "--json"]);
+  assert.notEqual(r.code, 0, "no-selection install fails");
+  const env = JSON.parse(r.stdout);
+  assert.equal(env.ok, false);
+  assert.equal(env.error, "ERR_NO_SELECTION");
+  assert.ok("details" in env, "uniform envelope carries details");
+  assert.equal(r.stdout.trim().split("\n").length, 1, "exactly one JSON line on stdout");
+});
+
+test("run: --target combined with multiple --agent is rejected (exit 2)", () => {
+  const r = runBin(["install", "--target", "/tmp/u3-x", "--agent", "codex", "--agent", "claude-code", "--skill", "sample:hello-world", "-y"]);
+  assert.notEqual(r.code, 0, "multi-agent + --target must not succeed");
+  assert.match(`${r.stdout}${r.stderr}`, /--target cannot be combined with multiple --agent|multi/i);
+});
+
+test("run: unknown verb falls through to full help, exit 0", () => {
+  const r = runBin(["frobnicate"]);
+  assert.equal(r.code, 0, "unknown verb → help, exit 0 (R2 fallback)");
+  assert.match(r.stdout, /^sample-installer v/);
+  assert.ok(r.stdout.includes("Common flags:"), "unknown verb renders the full body");
+});
+
+// NOT covered by construction (documented, not asserted — plan 003 U3):
+//   * CancelledError → exit 130: thrown only inside prompts.mjs, which the
+//     kernel/sample bin never invoke non-interactively. No spawn vector
+//     can raise it; faking a TTY is out of scope.
+//   * --profile env-var / target-suffix: cli.mjs sets
+//     process.env[productConfig.envProfile] in the CHILD; a parent spawn
+//     cannot observe it, and `agents --print-path` does not apply the
+//     profile suffix (verified empirically). No clean spawn-observable
+//     assertion exists via the sample bin; the env-set is internal.
+//   * extraHandlers / validVerbs override: createCli constructor options
+//     the thin sample bin does not exercise (it passes neither). Covered
+//     by construction at the createCli call site, not spawn-observable here.
