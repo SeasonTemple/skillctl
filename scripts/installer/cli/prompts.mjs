@@ -18,7 +18,7 @@ const CATEGORY_DESCRIPTIONS = {
   setup: "平台/环境配置",
 };
 
-export function renderBanner({ title = "NetOps Skills", enabled = process.stdout.isTTY, version = "" } = {}) {
+export function renderBanner({ title = "Agent Skills", enabled = process.stdout.isTTY, version = "" } = {}) {
   if (!enabled) return;
   try {
     const banner = figlet.textSync(title, { horizontalLayout: "default", width: 80 });
@@ -246,7 +246,7 @@ export async function gatherUninstallChoices({
 
 export async function gatherInstallChoices({ manifest, env = process.env, prompts = clack, adapters: adaptersOverride } = {}) {
   const checkCancel = makeCancelCheck(prompts);
-  prompts.intro("NetOps Agent Skills installer");
+  prompts.intro("Agent skills installer");
 
   const adapters = adaptersOverride || listAdapterStatus({ env });
 
