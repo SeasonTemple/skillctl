@@ -4,14 +4,14 @@
 
 # nexel
 
-**A product-agnostic kernel for shipping one agent-skill pack across Claude Code, Codex, and OpenCode.**
+**A product-agnostic kernel for installing one agent-skill pack across any agent CLI, through a pluggable adapter SPI. Claude Code, Codex, and OpenCode ship built-in.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](./package.json)
 [![Type: ESM](https://img.shields.io/badge/type-ESM-f7df1e?logo=javascript&logoColor=black)](./package.json)
 [![Tests](https://img.shields.io/badge/tests-253%20passing-2ea44f)](./scripts/installer/architecture.test.mjs)
 
-[English](./README.md) · [中文](./README.zh-CN.md) · [Why](#why-nexel) · [Core model](#core-model) · [Quick start](#quick-start) · [Reference](#reference) · [AI agents](#for-ai-agents) · [Examples](./examples/sample-product/)
+[English](./README.md) · [中文](./README.zh-CN.md) · [Why](#why-nexel) · [Getting started](#getting-started) · [Core model](#core-model) · [Reference](#reference) · [AI agents](#for-ai-agents) · [Examples](./examples/sample-product/)
 
 </div>
 
@@ -19,64 +19,45 @@
 
 ## Why nexel
 
-You maintain a pack of agent skills, subagents, and rules, and you want it
-installed across Claude Code, Codex, and OpenCode. Each tool stores assets in
-a different place and expects a different frontmatter shape — so "ship my pack
-everywhere" decays into N install scripts, N state files, and N drift checks,
-re-derived per tool and re-debugged on every change.
-
-`nexel` is the kernel that absorbs that work. You author **one
-`ProductConfig` and one manifest**; the kernel owns validation, planning,
-install / uninstall / update, state tracking, drift detection, and per-adapter
-dispatch. Nothing in the kernel knows your product — bin name, skill-id
-prefix, agent-name prefix, manifest filename, and env namespace all come from
-your config. Supporting a new CLI is adding an adapter, not a rewrite.
-
-> Driving a nexel-derived bin from an agent rather than authoring one? Skip to
-> [For AI agents](#for-ai-agents) — the behavioral contract is specified
-> separately and is stable kernel surface.
-
-## Core model
-
-Five nouns. Internalize these and the rest of this document follows.
-
-| Term | What it is |
-|---|---|
-| **Kernel** | The product-agnostic library in `scripts/installer/`. Owns install / uninstall / update / state / drift / plan. Knows nothing about any product's content. |
-| **ProductConfig** | The frozen per-product identity you pass in (`productName`, `skillIdPrefix`, …). The kernel is inert without one. |
-| **Adapter** | A per-CLI integration (Claude Code, Codex, OpenCode). Decides where assets land and how their content is transformed. |
-| **Asset** | A unit the kernel installs — exactly one of **skill**, **agent**, or **rule**. Not a generic file. |
-| **Manifest** | `install.json` — the single source of truth. An asset is visible to the kernel **iff** it has a manifest entry. |
-
-> One **Kernel** is configured by one **ProductConfig** per consuming product;
-> a **Manifest** declares which **Assets** exist; an **Adapter** maps and
-> transforms those assets onto a target CLI.
-
-## Quick start
-
-The repo ships a complete, runnable example under
-[`examples/sample-product/`](./examples/sample-product/) — see it work before
-wiring your own:
+Shipping a single pack of agent skills, subagents, and rules across multiple
+agent CLIs normally requires one install path per tool. Each target stores
+assets in a different location and expects a different frontmatter shape, so
+install logic, state tracking, and drift detection are re-implemented — and
+separately debugged — per target:
 
 ```text
-examples/sample-product/
-├── agent-skills.config.mjs    # ProductConfig (the only product-identity surface)
-├── sample.install.json        # Manifest
-├── skills/  agents/  rules/   # Content
-├── bin.mjs                    # Wraps createCli with the config above
-└── sample-bin.test.mjs        # End-to-end spawnSync tests
+                  ┌─ agent CLI #1 ─ install · state · drift   (path 1)
+  one skill pack ─┼─ agent CLI #2 ─ install · state · drift   (path 2)
+                  └─ agent CLI #N ─ install · state · drift   (path N)
+
+    N targets  ⇒  N re-implemented, separately-debugged paths
 ```
 
-```sh
-node examples/sample-product/bin.mjs help
-node examples/sample-product/bin.mjs list --json
-node examples/sample-product/bin.mjs plan --agent codex --skill sample:hello-world
+`nexel` consolidates that into one kernel. A consuming product supplies a
+single `ProductConfig` and a single manifest; the kernel owns validation,
+planning, install / uninstall / update, state tracking, and drift detection,
+and fans out to each target through a pluggable adapter at the edge:
+
+```text
+  ProductConfig ┐                            ┌─ Claude Code  ┐
+                ├─► nexel kernel ─dispatch─► ┼─ Codex         │ built-in
+  manifest ─────┘   validate · plan ·        ├─ OpenCode      ┘
+                    install/uninstall/       └─ any CLI ── via adapter SPI
+                    update · state · drift
 ```
 
-The bin is branded with whatever `productConfig.binName` you set; `nexel`
-never appears in user-facing text once wired up.
+The kernel carries no product knowledge — bin name, skill-id prefix,
+agent-name prefix, manifest filename, and env namespace are all injected
+through `ProductConfig`. Supporting an additional CLI is an adapter, not a
+rewrite.
 
-## Install
+> Agents driving a nexel-derived bin, rather than authoring one, should refer
+> to [For AI agents](#for-ai-agents): the behavioral contract is specified
+> separately and is stable kernel surface.
+
+## Getting started
+
+### Install
 
 Not on npm. Consume via a pinned git tag — clone, a git dependency, or
 vendoring:
@@ -93,6 +74,60 @@ git clone https://github.com/<owner>/nexel.git && cd nexel && git checkout v0.3.
 
 Requires Node ≥ 18, ESM only. Per-tag release notes live in
 [`docs/release-notes/`](./docs/release-notes/).
+
+### For humans — run or build a product
+
+A complete, runnable example lives under
+[`examples/sample-product/`](./examples/sample-product/):
+
+```text
+examples/sample-product/
+├── agent-skills.config.mjs    # ProductConfig (the only product-identity surface)
+├── sample.install.json        # Manifest
+├── skills/  agents/  rules/   # Content
+├── bin.mjs                    # Wraps createCli with the config above
+└── sample-bin.test.mjs        # End-to-end spawnSync tests
+```
+
+```sh
+node examples/sample-product/bin.mjs help
+node examples/sample-product/bin.mjs list --json
+node examples/sample-product/bin.mjs plan --agent codex --skill sample:hello-world
+```
+
+The bin is branded by `productConfig.binName`; `nexel` does not appear in
+user-facing text once a product is wired up. To build a product, see
+[ProductConfig](#productconfig).
+
+### For AI agents — drive a bin
+
+Any nexel-derived bin is non-interactive and machine-driveable: every verb
+accepts `--json` (a structured stdout envelope), `--yes` skips prompts, and
+the exit-code contract is stable. The full product-agnostic behavioral
+contract is [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md),
+detailed under [For AI agents](#for-ai-agents).
+
+## Core model
+
+Five terms underpin everything below.
+
+| Term | What it is |
+|---|---|
+| **Kernel** | The product-agnostic library in `scripts/installer/`. Owns install / uninstall / update / state / drift / plan. Knows nothing about any product's content. |
+| **ProductConfig** | The frozen per-product identity a consuming product passes in (`productName`, `skillIdPrefix`, …). The kernel is inert without one. |
+| **Adapter** | A pluggable per-CLI integration implementing the adapter SPI. Decides where assets land and how their content is transformed. Claude Code, Codex, and OpenCode ship built-in; any other CLI is reachable by supplying an adapter. |
+| **Asset** | A unit the kernel installs — exactly one of **skill**, **agent**, or **rule**. Not a generic file. |
+| **Manifest** | `install.json` — the single source of truth. An asset is visible to the kernel **iff** it has a manifest entry. |
+
+Relationships:
+
+```text
+  ProductConfig ──configures──► Kernel ──dispatch──► Adapter ──► target CLI
+                                  ▲                      ▲
+                                  │ reads                │ maps + transforms
+                               Manifest ──declares──► Asset
+                                                    (skill | agent | rule)
+```
 
 ## ProductConfig
 
@@ -156,8 +191,8 @@ aspirational.
 
 ## Reference
 
-> Lookup material — skim past unless you need a specific export, verb, or
-> flag.
+> Lookup material — not required reading; consult for a specific export,
+> verb, or flag.
 
 ### Public API
 
@@ -235,14 +270,14 @@ selection subset:
 | `--force` | — | Bypass safety checks |
 | `--accept-modified` | `<relPath>` | Mark a specific file as intentionally modified |
 
-Full reference: `node examples/sample-product/bin.mjs help`, dynamically
-rendered with your `productConfig.binName`. Per-verb: `<bin> <verb> --help`
+Full reference: `node examples/sample-product/bin.mjs help`, rendered
+dynamically from `productConfig.binName`. Per-verb: `<bin> <verb> --help`
 or `<bin> help <verb>`.
 
 ## For AI agents
 
-Driving a nexel-derived bin programmatically? The product-agnostic
-behavioral contract — every verb, the exit-code contract, the `--json`
+The product-agnostic behavioral contract for driving a nexel-derived bin
+programmatically — every verb, the exit-code contract, the `--json`
 envelope shape, the non-interactive flags (`--yes`, `--json`), and the
 help-affordance rules — is specified in
 [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md). It is stable
