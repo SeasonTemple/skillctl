@@ -22,15 +22,23 @@
 
 `skillctl` 是内核库。下游产品提供 `ProductConfig` 与 manifest，由 `skillctl` 负责校验、规划、安装/卸载/更新、状态追踪、drift 检测和多 adapter 分发。库自身完全产品无关 — bin 名、skill id 前缀、agent name 前缀、manifest 文件名、env var 命名空间，全部由 `ProductConfig` 注入。
 
-> **当前版本：** v0.1.0 — 首个 OSS 发布。API 表面已稳定，1.0 之前会根据使用者反馈做小迭代。
+> **当前版本：** v0.3.0 — 1.0 之前。尚未发布到 npm（该名被一个无关包占用，见 [ADR-0005](./docs/adr/0005-release-model-no-npm-provisional-name.md)）。公共表面仍在迭代，请锁定 tag。
 
 ## 安装
 
+未发布 npm。通过锁定的 git tag 消费 —— clone、git 依赖或 vendor：
+
 ```sh
-npm install skillctl
+# git 依赖（package.json），锁定到发布 tag
+npm install "git+https://github.com/<owner>/skillctl.git#v0.3.0"
 ```
 
-依赖 Node ≥ 18，仅 ESM。
+```sh
+# 或 clone + 锁定 tag
+git clone https://github.com/<owner>/skillctl.git && cd skillctl && git checkout v0.3.0
+```
+
+每个 tag 的发布说明见 [`docs/release-notes/`](./docs/release-notes/)。依赖 Node ≥ 18，仅 ESM。
 
 ## 30 秒上手
 
@@ -88,9 +96,9 @@ export default defineProductConfig({
 | 类别 | 导出 |
 |---|---|
 | **工厂** | `createCli`、`createAdapterRegistry`、`defineProductConfig` |
-| **CLI 基础件** | `parseArgs`、`printHelp`、`handleError`、`formatSkipNote`、`dispatchVerb`、`KERNEL_HANDLERS`、`strings` |
+| **CLI 基础件** | `parseArgs`、`printHelp`、`renderHelp`、`handleError`、`formatSkipNote`、`dispatchVerb`、`KERNEL_HANDLERS`、`strings` |
 | **Verb 处理器** | `runList`、`runAgents`、`runValidate`、`runExport`、`runImport`、`runRepair`、`runDoctor`、`runPlan`、`runInstall`、`runUninstall`、`runUpdate`、`resolveSelections` |
-| **Manifest 流水线** | `loadManifest`、`validateManifest`、`defaultManifestPath`、`defaultPaths`、`pipeline`、`detectDrift`、`exitCodeFor`、`formatFindings`、`SCHEMA_VERSION`、`PROFILES`、`CATEGORIES`、`HOSTS` |
+| **Manifest 流水线** | `loadManifest`、`validateManifest`、`defaultManifestPath`、`defaultPaths`、`detectDrift`、`exitCodeFor`、`formatFindings`、`SCHEMA_VERSION`、`PROFILES`、`CATEGORIES`、`HOSTS` |
 | **Adapter SPI** | `SPI_REQUIRED`、`SPI_DEFAULTS`、`validateAdapter`、`applyAdapterDefaults`、`ADAPTERS`、`getAdapter`、`listAdapterStatus`、`assertSupportsDirect`、`assertCliPresent` |
 | **资产模型** | `assetTypes`、`getAssetType`、`defaultTargetMapping`、`whichSync` |
 | **Plan 期工具** | `buildInstallPlan`、`resolveSelection`、`transitiveAssets`、`formatPlanText` |
@@ -165,7 +173,11 @@ Public API 桶 (`index.mjs`) 是下游唯一应该触碰的入口。
 | `--force` | — | 绕过安全检查 |
 | `--accept-modified` | `<relPath>` | 标记某文件为有意修改 |
 
-完整 flag 列表通过 `node examples/sample-product/bin.mjs help` 查看 — 输出会按你的 `productConfig.binName` 动态渲染。
+完整 flag 列表通过 `node examples/sample-product/bin.mjs help` 查看 — 输出会按你的 `productConfig.binName` 动态渲染。单 verb 用法：`<bin> <verb> --help` 或 `<bin> help <verb>`。
+
+## 给 LLM Agent
+
+需要程序化驱动 skillctl 衍生 bin？产品无关的行为契约 —— 每个 verb、退出码契约、`--json` envelope 形态、非交互 flag（`--yes`、`--json`）、help 可发现性规则 —— 规范在 [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md)。它是稳定的 kernel 表面，与任何产品的 bin 名称或内容无关。[`examples/sample-product/bin.mjs`](./examples/sample-product/) 是可直接运行的实例，用于对照测试。
 
 ## 测试
 
@@ -187,7 +199,7 @@ npm run test:sample-bin     # examples/sample-product 端到端
 
 ## Roadmap
 
-- **v0.2.0** — npm subpath exports (`skillctl/adapters/*`)、基于 sample fixture 扩充测试覆盖、locale 目录插件、更多 Adapter SPI 实现
+- **后续** — npm 发布仍推迟至名称 + 发布决策落定（[ADR-0005](./docs/adr/0005-release-model-no-npm-provisional-name.md)）；分发维持 git-tag / git 依赖 / vendor。进行中：基于 sample fixture 扩充测试覆盖、locale 目录插件、更多 Adapter SPI 实现
 - **v1.0.0** — API 在生产环境经过至少一个外部 adopter 一个 quarter 稳定运行后触发
 
 ## License

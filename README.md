@@ -22,15 +22,23 @@
 
 `skillctl` is a kernel library. Downstream products supply a `ProductConfig` plus a manifest, and `skillctl` handles validation, planning, install / uninstall / update, state tracking, drift detection, and multi-adapter dispatch. The library itself is product-agnostic — your product's bin name, skill-id prefix, agent name prefix, manifest filename, and env var namespace all come from `ProductConfig`.
 
-> **Status:** v0.1.0 — first OSS release. API surface is stable; expect minor pre-1.0 iteration based on adopter feedback.
+> **Status:** v0.3.0 — pre-1.0. Not published to npm yet (the name is held by an unrelated package; see [ADR-0005](./docs/adr/0005-release-model-no-npm-provisional-name.md)). The public surface is still iterating; pin a tag.
 
 ## Install
 
+Not on npm. Consume via a pinned git tag — clone, a git dependency, or vendoring:
+
 ```sh
-npm install skillctl
+# git dependency (package.json), pinned to a release tag
+npm install "git+https://github.com/<owner>/skillctl.git#v0.3.0"
 ```
 
-Requires Node ≥ 18. ESM only.
+```sh
+# or clone + pin
+git clone https://github.com/<owner>/skillctl.git && cd skillctl && git checkout v0.3.0
+```
+
+Release notes per tag live in [`docs/release-notes/`](./docs/release-notes/). Requires Node ≥ 18. ESM only.
 
 ## 30-Second Quick Start
 
@@ -88,9 +96,9 @@ Rules: `skillIdPrefix` may not contain `:`; `agentNamePrefix` must end with `-`.
 | Category | Exports |
 |---|---|
 | **Factories** | `createCli`, `createAdapterRegistry`, `defineProductConfig` |
-| **CLI primitives** | `parseArgs`, `printHelp`, `handleError`, `formatSkipNote`, `dispatchVerb`, `KERNEL_HANDLERS`, `strings` |
+| **CLI primitives** | `parseArgs`, `printHelp`, `renderHelp`, `handleError`, `formatSkipNote`, `dispatchVerb`, `KERNEL_HANDLERS`, `strings` |
 | **Verb handlers** | `runList`, `runAgents`, `runValidate`, `runExport`, `runImport`, `runRepair`, `runDoctor`, `runPlan`, `runInstall`, `runUninstall`, `runUpdate`, `resolveSelections` |
-| **Manifest pipeline** | `loadManifest`, `validateManifest`, `defaultManifestPath`, `defaultPaths`, `pipeline`, `detectDrift`, `exitCodeFor`, `formatFindings`, `SCHEMA_VERSION`, `PROFILES`, `CATEGORIES`, `HOSTS` |
+| **Manifest pipeline** | `loadManifest`, `validateManifest`, `defaultManifestPath`, `defaultPaths`, `detectDrift`, `exitCodeFor`, `formatFindings`, `SCHEMA_VERSION`, `PROFILES`, `CATEGORIES`, `HOSTS` |
 | **Adapter SPI** | `SPI_REQUIRED`, `SPI_DEFAULTS`, `validateAdapter`, `applyAdapterDefaults`, `ADAPTERS`, `getAdapter`, `listAdapterStatus`, `assertSupportsDirect`, `assertCliPresent` |
 | **Asset model** | `assetTypes`, `getAssetType`, `defaultTargetMapping`, `whichSync` |
 | **Plan-time utilities** | `buildInstallPlan`, `resolveSelection`, `transitiveAssets`, `formatPlanText` |
@@ -165,7 +173,11 @@ All verbs accept `--json` for machine-readable output. The following flags apply
 | `--force` | — | Bypass safety checks |
 | `--accept-modified` | `<relPath>` | Mark a specific file as intentionally modified |
 
-Run `node examples/sample-product/bin.mjs help` for the full reference, dynamically rendered with your `productConfig.binName`.
+Run `node examples/sample-product/bin.mjs help` for the full reference, dynamically rendered with your `productConfig.binName`. Per-verb usage: `<bin> <verb> --help` or `<bin> help <verb>`.
+
+## For LLM Agents
+
+Driving a skillctl-derived bin programmatically? The product-agnostic behavioral contract — every verb, the exit-code contract, the `--json` envelope shape, the non-interactive flags (`--yes`, `--json`), and the help-affordance rules — is specified in [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md). It is stable kernel surface, independent of any product's bin name or content. [`examples/sample-product/bin.mjs`](./examples/sample-product/) is a runnable instantiation to test against.
 
 ## Tests
 
@@ -187,7 +199,7 @@ npm run test:sample-bin     # examples/sample-product end-to-end
 
 ## Roadmap
 
-- **v0.2.0** — npm subpath exports (`skillctl/adapters/*`), expand test coverage against the sample fixture, locale catalog plug-ins, additional adapter SPI implementations
+- **Next** — npm publication remains deferred until the name + publish decision lands ([ADR-0005](./docs/adr/0005-release-model-no-npm-provisional-name.md)); distribution stays git-tag / git-dependency / vendor. Ongoing: broader test coverage against the sample fixture, locale catalog plug-ins, additional adapter SPI implementations
 - **v1.0.0** — when the API has survived ≥ one downstream adopter in production for a full quarter
 
 ## License
