@@ -4,14 +4,14 @@
 
 # nexel
 
-**通用产品无关内核 — 一套 agent-skill pack,一次写好,同时发布到 Claude Code、Codex、OpenCode。**
+**产品无关内核 —— 一套 agent-skill pack 写一次,经可插拔 adapter SPI 适配到任意 agent CLI;Claude Code、Codex、OpenCode 内置。**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](./package.json)
 [![Type: ESM](https://img.shields.io/badge/type-ESM-f7df1e?logo=javascript&logoColor=black)](./package.json)
 [![Tests](https://img.shields.io/badge/tests-253%20passing-2ea44f)](./scripts/installer/architecture.test.mjs)
 
-[English](./README.md) · [中文](./README.zh-CN.md) · [Why](#why-nexel) · [Core model](#core-model) · [Quick start](#quick-start) · [Reference](#reference) · [AI agents](#for-ai-agents) · [示例](./examples/sample-product/)
+[English](./README.md) · [中文](./README.zh-CN.md) · [Why](#why-nexel) · [Getting started](#getting-started) · [Core model](#core-model) · [Reference](#reference) · [AI agents](#for-ai-agents) · [示例](./examples/sample-product/)
 
 </div>
 
@@ -19,42 +19,62 @@
 
 ## Why nexel
 
-你维护着一套 agent skills、subagents、rules,想把它同时装到 Claude Code、
-Codex、OpenCode。每个工具把资产放在不同位置、要求不同的 frontmatter 形态
-—— 于是"把我这套发布到所有平台"退化成 N 套安装脚本、N 份状态文件、N 套
-drift 检查,每个工具各推导一遍,每次改动各调试一遍。
+将一套 agent skills、subagents、rules 同时发布到多个 agent CLI,通常意味着
+每个工具一条独立安装路径。各 target 把资产存在不同位置、要求不同的
+frontmatter 形态,于是安装逻辑、状态追踪、drift 检测被逐 target 重复实现、
+逐 target 单独调试:
 
-`nexel` 就是吸收这部分工作的内核。你只写**一份 `ProductConfig` 和一份
-manifest**;内核负责校验、规划、安装/卸载/更新、状态追踪、drift 检测、
-按 adapter 分发。内核对你的产品零认知 —— bin 名、skill-id 前缀、agent-name
-前缀、manifest 文件名、env 命名空间,全部来自你的 config。支持一个新 CLI
-是加一个 adapter,不是重写。
+```text
+                  ┌─ agent CLI #1 ─ install · state · drift   (path 1)
+  one skill pack ─┼─ agent CLI #2 ─ install · state · drift   (path 2)
+                  └─ agent CLI #N ─ install · state · drift   (path N)
 
-> 是要用 agent 程序化驱动 nexel 衍生 bin,而不是自己写一个?直接跳到
-> [For AI agents](#for-ai-agents) —— 行为契约单独规范,且是稳定的 kernel
+    N targets  ⇒  N re-implemented, separately-debugged paths
+```
+
+`nexel` 将这部分整合进单一内核。消费产品提供一份 `ProductConfig` 与一份
+manifest;内核负责校验、规划、安装/卸载/更新、状态追踪、drift 检测,并经
+可插拔 adapter 在边界向每个 target 扇出:
+
+```text
+  ProductConfig ┐                            ┌─ Claude Code  ┐
+                ├─► nexel kernel ─dispatch─► ┼─ Codex         │ built-in
+  manifest ─────┘   validate · plan ·        ├─ OpenCode      ┘
+                    install/uninstall/       └─ any CLI ── via adapter SPI
+                    update · state · drift
+```
+
+内核不携带任何产品知识 —— bin 名、skill-id 前缀、agent-name 前缀、manifest
+文件名、env 命名空间,全部经 `ProductConfig` 注入。支持一个新 CLI 是新增
+一个 adapter,而非重写。
+
+> 以 agent 程序化驱动 nexel 衍生 bin(而非自行编写)者,参见
+> [For AI agents](#for-ai-agents):行为契约单独规范,且为稳定 kernel
 > 表面。
 
-## Core model
+## Getting started
 
-五个名词。吃透这五个,本文余下部分自然成立。
+### Install
 
-| 名词 | 是什么 |
-|---|---|
-| **Kernel** | `scripts/installer/` 里的产品无关库。owns 安装/卸载/更新/状态/drift/规划。对任何产品的内容零认知。 |
-| **ProductConfig** | 你传入的、按产品冻结的身份(`productName`、`skillIdPrefix`…)。没有它内核处于 inert。 |
-| **Adapter** | 按 CLI 的可插拔集成(Claude Code、Codex、OpenCode)。决定资产落到哪、内容如何 transform。 |
-| **Asset** | 内核安装的单位 —— **skill**、**agent**、**rule** 三者恰取其一。不是泛指文件。 |
-| **Manifest** | `install.json` —— 唯一真相源。一个资产对内核可见 **当且仅当** 它有 manifest 条目。 |
+未发布 npm。通过锁定的 git tag 消费 —— clone、git 依赖或 vendor:
 
-> 每个消费产品有一个 **Kernel**,由一个 **ProductConfig** 配置;一份
-> **Manifest** 声明哪些 **Asset** 存在;一个 **Adapter** 把这些资产映射并
-> transform 到目标 CLI。
+```sh
+# git 依赖（package.json），锁定到发布 tag
+npm install "git+https://github.com/<owner>/nexel.git#v0.3.0"
+```
 
-## Quick start
+```sh
+# 或 clone + 锁定 tag
+git clone https://github.com/<owner>/nexel.git && cd nexel && git checkout v0.3.0
+```
 
-仓库自带完整、可运行的示例
-[`examples/sample-product/`](./examples/sample-product/) —— 先跑起来看效果,
-再接你自己的:
+依赖 Node ≥ 18,仅 ESM。每个 tag 的发布说明见
+[`docs/release-notes/`](./docs/release-notes/)。
+
+### For humans — 运行或构建产品
+
+完整、可运行的示例位于
+[`examples/sample-product/`](./examples/sample-product/):
 
 ```text
 examples/sample-product/
@@ -71,25 +91,37 @@ node examples/sample-product/bin.mjs list --json
 node examples/sample-product/bin.mjs plan --agent codex --skill sample:hello-world
 ```
 
-bin 的品牌名取决于你在 `productConfig.binName` 里设的值;一旦接入,`nexel`
-自身不会出现在任何 user-facing 文本里。
+bin 的品牌名由 `productConfig.binName` 决定;产品接入后,`nexel` 自身不
+出现在任何 user-facing 文本中。构建产品见 [ProductConfig](#productconfig)。
 
-## Install
+### For AI agents — 驱动 bin
 
-未发布 npm。通过锁定的 git tag 消费 —— clone、git 依赖或 vendor:
+任何 nexel 衍生 bin 均非交互、可机器驱动:每个 verb 接受 `--json`(结构化
+stdout envelope),`--yes` 跳过提示,退出码契约稳定。完整产品无关行为契约
+为 [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md),详见
+[For AI agents](#for-ai-agents)。
 
-```sh
-# git 依赖（package.json），锁定到发布 tag
-npm install "git+https://github.com/<owner>/nexel.git#v0.3.0"
+## Core model
+
+以下五个术语支撑全文。
+
+| 名词 | 是什么 |
+|---|---|
+| **Kernel** | `scripts/installer/` 里的产品无关库。owns 安装/卸载/更新/状态/drift/规划。对任何产品的内容零认知。 |
+| **ProductConfig** | 由消费产品传入、按产品冻结的身份(`productName`、`skillIdPrefix`…)。没有它内核处于 inert。 |
+| **Adapter** | 实现 adapter SPI 的可插拔按-CLI 集成。决定资产落到哪、内容如何 transform。Claude Code、Codex、OpenCode 内置;任意其它 CLI 通过提供 adapter 即可触达。 |
+| **Asset** | 内核安装的单位 —— **skill**、**agent**、**rule** 三者恰取其一。不是泛指文件。 |
+| **Manifest** | `install.json` —— 唯一真相源。一个资产对内核可见 **当且仅当** 它有 manifest 条目。 |
+
+关系:
+
+```text
+  ProductConfig ──configures──► Kernel ──dispatch──► Adapter ──► target CLI
+                                  ▲                      ▲
+                                  │ reads                │ maps + transforms
+                               Manifest ──declares──► Asset
+                                                    (skill | agent | rule)
 ```
-
-```sh
-# 或 clone + 锁定 tag
-git clone https://github.com/<owner>/nexel.git && cd nexel && git checkout v0.3.0
-```
-
-依赖 Node ≥ 18,仅 ESM。每个 tag 的发布说明见
-[`docs/release-notes/`](./docs/release-notes/)。
 
 ## ProductConfig
 
@@ -149,7 +181,7 @@ export default defineProductConfig({
 
 ## Reference
 
-> 查阅性材料 —— 除非要查具体导出、verb 或 flag,可跳过。
+> 查阅性材料 —— 非必读;需查具体导出、verb 或 flag 时再来。
 
 ### Public API
 
@@ -227,13 +259,13 @@ export default defineProductConfig({
 | `--force` | — | 绕过安全检查 |
 | `--accept-modified` | `<relPath>` | 标记某文件为有意修改 |
 
-完整 flag 列表:`node examples/sample-product/bin.mjs help`,按你的
+完整 flag 列表:`node examples/sample-product/bin.mjs help`,按
 `productConfig.binName` 动态渲染。单 verb:`<bin> <verb> --help` 或
 `<bin> help <verb>`。
 
 ## For AI agents
 
-需要程序化驱动 nexel 衍生 bin?产品无关的行为契约 —— 每个 verb、退出码
+用于程序化驱动 nexel 衍生 bin 的产品无关行为契约 —— 每个 verb、退出码
 契约、`--json` envelope 形态、非交互 flag(`--yes`、`--json`)、help 可
 发现性规则 —— 规范在
 [`docs/AGENT-CLI-CONTRACT.md`](./docs/AGENT-CLI-CONTRACT.md)。它是稳定的
