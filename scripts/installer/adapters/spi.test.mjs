@@ -37,7 +37,7 @@ test("SPI_REQUIRED lists the four required fields", () => {
   assert.deepEqual([...SPI_REQUIRED], ["id", "displayName", "detectTargetRoot", "detectStatus"]);
 });
 
-test("SPI_DEFAULTS exposes all six optional fields with sensible defaults", () => {
+test("SPI_DEFAULTS exposes all eight optional fields with sensible defaults", () => {
   const expectedKeys = [
     "mapTargetPath",
     "supportedAssetTypes",
@@ -46,6 +46,7 @@ test("SPI_DEFAULTS exposes all six optional fields with sensible defaults", () =
     "cliBinary",
     "cliInstallUrl",
     "doctorProbes",
+    "transformAssetContent",
   ];
   for (const key of expectedKeys) {
     assert.ok(key in SPI_DEFAULTS, `SPI_DEFAULTS missing ${key}`);
@@ -58,6 +59,13 @@ test("SPI_DEFAULTS exposes all six optional fields with sensible defaults", () =
   assert.equal(SPI_DEFAULTS.cliInstallUrl, "");
   assert.equal(typeof SPI_DEFAULTS.doctorProbes, "function");
   assert.deepEqual(SPI_DEFAULTS.doctorProbes(), []);
+  // v1.1: transformAssetContent identity default returns the input Buffer
+  // UNCHANGED (same reference) so the kernel can detect "transformed" via
+  // reference equality.
+  assert.equal(typeof SPI_DEFAULTS.transformAssetContent, "function");
+  const buf = Buffer.from("x");
+  assert.equal(SPI_DEFAULTS.transformAssetContent({ assetType: "agent", id: "a" }, buf), buf,
+    "identity default must return the SAME Buffer instance (reference equality)");
 });
 
 test("validateAdapter: missing required-4 fields are all reported", () => {
@@ -111,6 +119,14 @@ test("applyDefaults: fills missing optional fields, preserves provided ones", ()
   const withCustom = applyDefaults(makeMinimalAdapter({ supportsDirect: true, cliBinary: "mock-cli" }));
   assert.equal(withCustom.supportsDirect, true);
   assert.equal(withCustom.cliBinary, "mock-cli");
+
+  // v1.1: transformAssetContent injected (identity) when absent, preserved when present.
+  assert.equal(typeof prepared.transformAssetContent, "function");
+  const b = Buffer.from("hi");
+  assert.equal(prepared.transformAssetContent({ assetType: "skill", id: "s" }, b), b);
+  const customXf = (asset, body) => Buffer.concat([body, Buffer.from("!")]);
+  const withXf = applyDefaults(makeMinimalAdapter({ transformAssetContent: customXf }));
+  assert.equal(withXf.transformAssetContent, customXf, "provided transformAssetContent must not be overwritten");
 });
 
 test("createAdapterRegistry: rejects empty array with ERR_NO_ADAPTERS", () => {

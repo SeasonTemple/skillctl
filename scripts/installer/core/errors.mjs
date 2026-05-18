@@ -60,6 +60,9 @@ export const ERR_AGENT_CLI_MISSING = "ERR_AGENT_CLI_MISSING";
 export const ERR_ADAPTER_ID_COLLISION = "ERR_ADAPTER_ID_COLLISION";
 export const ERR_ADAPTER_INVALID = "ERR_ADAPTER_INVALID";
 export const ERR_NO_ADAPTERS = "ERR_NO_ADAPTERS";
+// SPI v1.1: an adapter's transformAssetContent hook threw or returned a
+// non-Buffer. Part of the public stability contract.
+export const ERR_TRANSFORM_FAILED = "ERR_TRANSFORM_FAILED";
 
 // Prompt errors (interactive cancellation).
 export const ERR_CANCELLED = "ERR_CANCELLED";
@@ -67,11 +70,6 @@ export const ERR_CANCELLED = "ERR_CANCELLED";
 // Product config errors (new in Unit 2; ERR_MISSING_PRODUCT_CONFIG used by Unit 8).
 export const ERR_INVALID_PRODUCT_CONFIG = "ERR_INVALID_PRODUCT_CONFIG";
 export const ERR_MISSING_PRODUCT_CONFIG = "ERR_MISSING_PRODUCT_CONFIG";
-
-// Pipeline errors (predeclared for Unit 5).
-export const ERR_PIPELINE_STAGE = "ERR_PIPELINE_STAGE";
-export const ERR_PIPELINE_COMMIT = "ERR_PIPELINE_COMMIT";
-export const ERR_PIPELINE_PERSIST = "ERR_PIPELINE_PERSIST";
 
 // ---------- Error classes (new ones; existing classes stay in their owning modules) ----------
 

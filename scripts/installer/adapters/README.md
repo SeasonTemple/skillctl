@@ -1,6 +1,8 @@
-# Adapter SPI v1
+# Adapter SPI v1.1
 
-Adapters are the pluggable boundary between the installer kernel and a specific Agent CLI (Claude Code, Codex, OpenCode, or any future CLI). This document is the **single source of truth** for the SPI v1 contract.
+Adapters are the pluggable boundary between the installer kernel and a specific Agent CLI (Claude Code, Codex, OpenCode, or any future CLI). This document is the **single source of truth** for the SPI v1.1 contract.
+
+**v1.1 (additive)** — adds the optional `transformAssetContent` hook for per-CLI content rewriting (e.g. frontmatter translation). Identity default; existing adapters work unchanged.
 
 External adapter authors implement the required exports below, write zero-effect import-time code, and pass their module to `createAdapterRegistry([...adapters])` when constructing a CLI via `createCli({ adapters, productConfig })`.
 
@@ -15,18 +17,19 @@ Every adapter **must** export these. `createAdapterRegistry` throws `AdapterErro
 | `detectTargetRoot` | `({ override, env }) => string` | Compute the absolute path where this adapter's CLI stores skills/agents/rules. Honor `override` (explicit `--target`) first, then env-var overrides (e.g., `CLAUDE_HOME`), then sensible OS default. |
 | `detectStatus` | `({ override, env }) => StatusObject` | Probe the local environment. Return shape: `{ id, displayName, supportsDirect, targetRoot, exists, writable, cliBinary, cliPath, cliPresent, cliInstallUrl, notes }`. |
 
-## Optional exports (six fields with kernel defaults)
+## Optional exports (seven fields with kernel defaults)
 
 If omitted, `createAdapterRegistry` injects the default. Adapters override only when they have specific behavior.
 
 | Field | Kernel default | When to override |
 |-------|----------------|------------------|
 | `mapTargetPath(asset, manifest, productConfig)` | `defaultTargetMapping` from `core/plan.mjs` | When the CLI lays out installed files differently from the default `skills/<dirname>/`, `agents/<name>.md`, `rules/...` scheme. See `adapters/opencode.mjs` for a concrete override. |
-| `supportedAssetTypes` | `["skill", "agent", "rule"]` | When the CLI cannot host one or more asset types. E.g., OpenCode skips `agent` because its agent schema is incompatible with Claude Code's frontmatter. |
+| `supportedAssetTypes` | `["skill", "agent", "rule"]` | When the CLI cannot host one or more asset types. (OpenCode hosts all three: its `agent` frontmatter is translated via `transformAssetContent` — see ADR-0002 D4 for the tool-restriction divergence that translation accepts.) |
 | `pluginInstallInstructions()` | Returns `""` | Provide a multi-line user-facing instruction for installing this product as a plugin via the CLI's own plugin marketplace (vs `direct` mode). |
 | `supportsDirect` | `false` | Set `true` if the CLI tolerates third-party files being dropped into its `targetRoot` (vs requiring a plugin-marketplace install). |
 | `cliBinary` / `cliInstallUrl` | `""` / `""` | Provide so doctor / install can detect whether the agent CLI is on PATH and suggest install URL when not. |
 | `doctorProbes({ targetRoot, env, productConfig })` | `() => []` | Return adapter-specific health checks as `Array<{ name, ok, detail }>`. Used by `doctor` verb output alongside generic kernel checks (target writable, state schema valid, etc.). |
+| `transformAssetContent(asset, body)` *(v1.1)* | `(asset, body) => body` (identity, returns the **input Buffer unchanged** — reference equality is observed by the kernel's `transformed` flag) | When the target CLI's on-disk shape diverges from the source. Receives `{ assetType, id, sourceRelPath }` and a UTF-8 `Buffer`; must return a `Buffer`. MUST be pure (no env reads, no IO). A throw or non-Buffer return surfaces as `AdapterError(ERR_TRANSFORM_FAILED)`. See `adapters/opencode.mjs` (Claude→OpenCode agent frontmatter) and ADR-0002. |
 
 ## Import side-effect ban
 
@@ -93,9 +96,19 @@ export function pluginInstallInstructions() {
 
 ## SPI evolution policy
 
-- **Minor versions** add new **optional** fields only. Existing adapters continue to work without changes; the kernel provides defaults.
+- **Minor versions** add new **optional** fields only. Existing adapters continue to work without changes; the kernel provides defaults. (v1.1 added `transformAssetContent`.)
 - **Major versions** may add new **required** fields. Existing adapters must update.
-- ERR codes referenced here (`ERR_ADAPTER_INVALID`, `ERR_ADAPTER_ID_COLLISION`, `ERR_NO_ADAPTERS`, `ERR_UNKNOWN_ADAPTER`, `ERR_DIRECT_UNSUPPORTED`, `ERR_AGENT_CLI_MISSING`) are part of the public stability contract — their string values do not change between minor versions.
+- ERR codes referenced here (`ERR_ADAPTER_INVALID`, `ERR_ADAPTER_ID_COLLISION`, `ERR_NO_ADAPTERS`, `ERR_UNKNOWN_ADAPTER`, `ERR_DIRECT_UNSUPPORTED`, `ERR_AGENT_CLI_MISSING`, `ERR_TRANSFORM_FAILED`) are part of the public stability contract — their string values do not change between minor versions.
+
+### Pre-1.0 minor-bump removal allowance
+
+Forward hygiene for the eventual first publish (the kernel is currently unpublished — see ADR-0005). A public symbol or contract-bound ERR code MAY be removed in a pre-1.0 **minor** bump only when **all three** hold:
+
+1. it has zero non-test, non-re-export runtime consumers in-repo (verified by grep);
+2. no code path documents it as a thrown/returned contract;
+3. the release note carries a Breaking Changes section disclosing the removal with migration guidance.
+
+This allowance exists so the policy is in place *when* publishing starts; it is not a precondition for pre-publish internal cleanup (which is not a contract break — there is no published contract yet).
 
 ## What the SPI deliberately does NOT include (yet)
 

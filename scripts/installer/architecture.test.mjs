@@ -199,7 +199,6 @@ test("architecture: installer/index.mjs re-exports stable public API symbols", (
     "whichSync",
     "loadManifest",
     "validateManifest",
-    "pipeline",
     "CommandError",
     "FsError",
     "StateError",

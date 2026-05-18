@@ -2,6 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+
 import { whichSync } from "../core/which.mjs";
 import { ERR_ASSET_TYPE } from "../core/errors.mjs";
 
@@ -15,14 +17,19 @@ export const cliInstallUrl = "https://opencode.ai";
 // - rule:  ✓ — reference files cited by skills via relative paths (NOT
 //   loaded via OpenCode's AGENTS.md ambient mechanism, which we deliberately
 //   don't use)
-// - agent: ✗ — our agents/*.md use Claude Code frontmatter (tools array,
-//   model: "sonnet", Claude-specific tool names). OpenCode reads
-//   ~/.config/opencode/agent/*.md at startup and validates against its OWN
-//   schema (model: "<provider>/<id>", tools: {…}, mode: subagent|primary,
-//   permission: {…}). Mismatch raises ConfigInvalidError on opencode boot.
-//   We skip agent install on opencode and surface the skipped count in the
-//   plan; users still get the agents on claude-code/codex.
-export const supportedAssetTypes = ["skill", "rule"];
+// - agent: ✓ (SPI v1.1) — installed via transformAssetContent, which
+//   rewrites the Claude Code agent frontmatter into OpenCode's agent schema.
+//   Claude agents declare `tools:` as an ARRAY allowlist; OpenCode's schema
+//   uses `tools: {…}` (object allow/deny) + `permission: {…}` + `mode`.
+//   The shapes are not losslessly mappable, and OpenCode's startup validator
+//   rejects Claude's shape (ConfigInvalidError). Investigated (grill Q5):
+//   OpenCode has no per-agent ARRAY tool-allowlist equivalent that survives
+//   its validator, so `tools:` is DROPPED (a partial/incorrect object map is
+//   worse than a documented divergence). Consequence: an agent restricted on
+//   Claude/Codex runs at OpenCode's DEFAULT subagent tool access — a named,
+//   accepted capability divergence (ADR-0002 D4), surfaced by the
+//   tool-posture test, revisitable if OpenCode adds an array-allowlist field.
+export const supportedAssetTypes = ["skill", "agent", "rule"];
 
 export function detectTargetRoot({ override, env = process.env } = {}) {
   if (override) return path.resolve(override);
@@ -48,7 +55,7 @@ export function detectStatus({ override, env = process.env } = {}) {
     cliPresent: cliPath !== null,
     cliInstallUrl,
     notes: exists
-      ? "OpenCode global config detected. Direct install writes skills/ and rules/. Subagents are skipped (Claude Code frontmatter incompatible with OpenCode's agent schema)."
+      ? "OpenCode global config detected. Direct install writes skills/, rules/, and agents (frontmatter translated to OpenCode's schema; per-agent tool restrictions do not survive — see ADR-0002 D4)."
       : "OpenCode global config not present; would be created on first install",
   };
 }
@@ -86,6 +93,66 @@ export function pluginInstallInstructions() {
     "Note: direct mode also installs rule reference files (cited by skills",
     "      via relative paths). AGENTS.md is never modified.",
   ].join("\n");
+}
+
+// ---------- SPI v1.1 transformAssetContent (ADR-0002) ----------
+//
+// Translate Claude Code agent frontmatter into OpenCode's agent schema:
+// emit only { description, mode: "subagent" }; drop tools/model/color.
+// Body bytes pass through UNCHANGED (ADR-0002 D3 — no body rewriting).
+// Identity for skill / rule (their on-disk shapes already match OpenCode).
+// MUST be pure (no env reads, no IO) per the SPI import side-effect ban.
+//
+// Why mode is always "subagent": Claude Code dispatches every agent via the
+// Task tool (subagent role by construction); OpenCode's `mode: subagent` is
+// the equivalent. model/color are dropped so OpenCode subagents inherit the
+// parent session's provider (avoids ProviderModelNotFoundError). tools: is
+// dropped — see the supportedAssetTypes note + ADR-0002 D4.
+export function transformAssetContent(asset, body) {
+  if (asset.assetType !== "agent") return body; // identity for skill/rule
+
+  const text = body.toString("utf8");
+  const fm = splitFrontmatter(text);
+  if (!fm) return body; // no leading --- block; leave untouched
+
+  let parsed;
+  try {
+    parsed = parseYaml(fm.yaml) ?? {};
+  } catch {
+    // Malformed YAML: pass through. It surfaces as ConfigInvalidError at
+    // OpenCode boot — a real source problem, not masked by the adapter.
+    return body;
+  }
+  if (typeof parsed !== "object" || Array.isArray(parsed)) return body;
+
+  // Fail-fast on source defect: a missing/empty description would emit a
+  // mute-but-valid degraded agent. Throw at install time so the user fixes
+  // the source. applyAdapterTransform wraps this as
+  // AdapterError(ERR_TRANSFORM_FAILED) with the adapter/asset/stage details.
+  if (typeof parsed.description !== "string" || parsed.description.trim() === "") {
+    const reason = parsed.description === undefined
+      ? "missing `description` field"
+      : `\`description\` must be a non-empty string (got ${typeof parsed.description})`;
+    const err = new Error(`opencode: agent frontmatter ${reason} (${asset.id})`);
+    err.code = "ERR_OPENCODE_AGENT_FRONTMATTER";
+    throw err;
+  }
+
+  const out = { description: parsed.description, mode: "subagent" };
+  const yamlOut = stringifyYaml(out);
+  return Buffer.from(`---\n${yamlOut}---\n${fm.body}`, "utf8");
+}
+
+// Split a leading `---\n … \n---\n` YAML frontmatter block. Returns
+// { yaml, body } or null when there is no well-formed leading block.
+function splitFrontmatter(text) {
+  if (!text.startsWith("---\n")) return null;
+  const end = text.indexOf("\n---\n", 4);
+  if (end === -1) return null;
+  return {
+    yaml: text.slice(4, end + 1),
+    body: text.slice(end + 5),
+  };
 }
 
 function canWriteTo(dir) {

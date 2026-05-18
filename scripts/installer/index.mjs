@@ -54,9 +54,6 @@ export { assetTypes, getAssetType } from "./core/asset-types.mjs";
 export { defaultTargetMapping, buildInstallPlan, resolveSelection, transitiveAssets, formatPlanText, PlanError } from "./core/plan.mjs";
 export { whichSync } from "./core/which.mjs";
 
-// ---------- Five-stage pipeline (install / uninstall / update) ----------
-export { pipeline } from "./core/pipeline.mjs";
-
 // ---------- Manifest (split into schema/loader/validator/drift) ----------
 export { loadManifest, defaultManifestPath, defaultPaths } from "./core/manifest/loader.mjs";
 export { validateManifest, exitCodeFor, formatFindings } from "./core/manifest/validator.mjs";
@@ -122,12 +119,10 @@ export {
   ERR_ADAPTER_ID_COLLISION,
   ERR_ADAPTER_INVALID,
   ERR_NO_ADAPTERS,
+  ERR_TRANSFORM_FAILED,
   ERR_CANCELLED,
   ERR_INVALID_PRODUCT_CONFIG,
   ERR_MISSING_PRODUCT_CONFIG,
-  ERR_PIPELINE_STAGE,
-  ERR_PIPELINE_COMMIT,
-  ERR_PIPELINE_PERSIST,
 } from "./core/errors.mjs";
 
 // FsError lives in filesystem.mjs; StateError in state.mjs; CancelledError in prompts.mjs.

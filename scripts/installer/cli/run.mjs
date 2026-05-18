@@ -155,6 +155,7 @@ export async function runExport(args, ctx) {
     repoRoot: ctx.repoRoot,
     adapterId: args.adapter,
     target: args.target,
+    productConfig: ctx.productConfig,
   });
   // Always emit JSON — export is a machine-to-machine format. --json is a no-op.
   process.stdout.write(JSON.stringify(envelope, null, 2) + "\n");
@@ -187,6 +188,7 @@ export async function runImport(args, ctx) {
     dryRun: args.dryRun,
     overwriteUnmanaged: args.overwrite,
     allowNoCli: args.allowNoCli,
+    productConfig: ctx.productConfig,
   });
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -214,6 +216,7 @@ export async function runRepair(args, ctx) {
     apply: args.apply,
     acceptModified: args.acceptModified,
     installerVersion: ctx.version,
+    productConfig: ctx.productConfig,
   });
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -395,6 +398,7 @@ export async function runUninstall(args, ctx) {
       force: args.force,
       acceptModified: args.acceptModified,
       dryRun: args.dryRun,
+      productConfig: ctx.productConfig,
     });
     if (args.json) {
       process.stdout.write(JSON.stringify(multi, null, 2) + "\n");
@@ -426,6 +430,7 @@ export async function runUninstall(args, ctx) {
     force: args.force,
     acceptModified: args.acceptModified,
     dryRun: args.dryRun,
+    productConfig: ctx.productConfig,
   });
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -472,6 +477,7 @@ export async function runUpdate(args, ctx) {
       force: args.force,
       acceptModified: args.acceptModified,
       dryRun: args.dryRun,
+      productConfig: ctx.productConfig,
     });
     if (args.json) {
       process.stdout.write(JSON.stringify(multi, null, 2) + "\n");
@@ -507,6 +513,7 @@ export async function runUpdate(args, ctx) {
     force: args.force,
     acceptModified: args.acceptModified,
     dryRun: args.dryRun,
+    productConfig: ctx.productConfig,
   });
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");

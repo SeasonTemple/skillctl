@@ -5,10 +5,8 @@
 // API is exposed — that abstraction is YAGNI until a real runtime-extensible
 // asset type emerges. See plan Unit 2 + debt #5.
 //
-// Each entry currently declares only the source→target path mapping. Future
-// units may add `sourceWalk`, `hashStrategy`, `resolveInstalledName` as
-// pipeline (Unit 5) and ProductConfig (Unit 8) wiring lands. Keep the
-// surface narrow — only fields with concrete callers are exposed.
+// Each entry currently declares only the source→target path mapping. Keep
+// the surface narrow — only fields with concrete callers are exposed.
 
 import path from "node:path";
 

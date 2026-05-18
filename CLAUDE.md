@@ -22,7 +22,7 @@ Installs `yaml` + `husky` (auto-activated via the `prepare` script). Run once af
 skillctl/
 ├── scripts/
 │   ├── installer/          # The kernel library — Z three-layer
-│   │   ├── core/           # Pure logic: manifest, validator, plan, state, pipeline
+│   │   ├── core/           # Pure logic: manifest, validator, plan, state, stage-asset
 │   │   ├── adapters/       # Platform integrations: claude, codex, opencode, SPI
 │   │   ├── cli/            # CLI surface: argv, help, dispatch, run, strings, prompts
 │   │   ├── index.mjs       # Public API barrel (the only entry point downstream consumes)
@@ -32,6 +32,8 @@ skillctl/
 ├── examples/
 │   └── sample-product/     # Canonical worked example: ProductConfig + manifest + content + bin
 └── docs/
+    ├── adr/                # Architecture Decision Records (one .md per ADR)
+    ├── plans/              # Implementation plans (one .md per plan)
     └── release-notes/      # Per-release notes (one .md per tag)
 ```
 
@@ -43,6 +45,7 @@ skillctl/
 | `npm run lint:skills` | Lint SKILL.md frontmatter (use `--dir=<path>` and `--id-prefix=<prefix>` to target a product) |
 | `npm run lint:manifest` | Validate `install.json` against the schema |
 | `npm run lint:drift` | Detect drift between manifest and disk |
+| `npm run lint:release-sync` | Check `package.json` version == newest `docs/release-notes/v*.md` (semver; also runs in pre-commit) |
 
 ## Architecture invariants (enforced by `architecture.test.mjs`)
 
@@ -68,17 +71,11 @@ Optional fields fall back to generic kernel defaults: `defaultSkillsDir` = "skil
 
 ## Test scope
 
-v0.1.0 ships with a deliberately lean test suite:
+The full suite is the `test` script in `package.json` (run `npm test`). It is the authoritative, always-current list — do not maintain a parallel enumeration here.
 
-- `scripts/lint-skills.test.mjs`                    — Frontmatter linter unit tests
-- `scripts/installer/core/manifest/loader.test.mjs` — Path resolution
-- `scripts/installer/cli/argv.test.mjs`             — CLI arg parser
-- `scripts/installer/cli/dispatch.test.mjs`         — Verb dispatch table
-- `scripts/installer/adapters/spi.test.mjs`         — Adapter SPI conformance
-- `scripts/installer/architecture.test.mjs`         — Z-layer dependency guard
-- `examples/sample-product/sample-bin.test.mjs`     — End-to-end smoke via `child_process.spawnSync`
+Coverage is layered: per-module unit tests (`errors`, `asset-types`, `which`, `plan`, `stage-asset`, `manifest/{loader,validator,drift}`), adapter conformance (`spi`, `opencode`), CLI surface (`argv`, `dispatch`, `lint-skills`, `lint-release-sync`), the Z-layer guard (`architecture`), and end-to-end witnesses bound to `examples/sample-product/` (`sample-bin`, `cli/commands/repair-rehash`).
 
-Tests that were tightly coupled to the legacy product fixture were dropped during the OSS strip. They will be rebuilt against `examples/sample-product/` as that fixture stabilizes.
+The legacy-product-coupled tests dropped during the OSS strip were rebuilt against `examples/sample-product/`. Product-coupled CLI tests (`commands`/`cli`/`help`/`strings`/`prompts`) remain a deferred follow-up sweep as the fixture stabilizes.
 
 ## Adding a new skill (when working inside a downstream product, not this repo)
 
@@ -116,3 +113,4 @@ Downstream products can fork the linter (`scripts/lint-skills.mjs`) if they want
 - Plugin versioning is manual — there is no automatic semver tool
 - Don't add ts/tsx; this is a pure JS kernel
 - New tests run via `node --test`; no Jest / Vitest dependency
+- One ADR per significant architectural decision in `docs/adr/NNNN-slug.md` (sequential numbering). An ADR is warranted only when the decision is hard to reverse, surprising without context, and the result of a real trade-off. See `docs/adr/0001-adopt-adr-practice-and-record-frozen-invariants.md` for format and the recorded kernel invariants.

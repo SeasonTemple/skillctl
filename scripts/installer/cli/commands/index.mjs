@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import { loadManifest, defaultManifestPath, defaultPaths } from "../../core/manifest/loader.mjs";
 import { validateManifest } from "../../core/manifest/validator.mjs";
 import { buildInstallPlan, resolveSelection, transitiveAssets, formatPlanText, PlanError } from "../../core/plan.mjs";
+import { stageAsset, hashTransformed } from "../../core/stage-asset.mjs";
 import {
   emptyState,
   applyInstall,
@@ -19,7 +20,6 @@ import {
   snapshotStateBak,
   recoverySweep,
   makeStagingDir,
-  stageWrite,
   promoteStagedFiles,
   deleteFiles,
   hashFile,
@@ -143,6 +143,7 @@ export async function planSelection({ repoRoot, adapterId, target, selectionIds,
     mapTargetPath,
     currentState: state,
     supportedAssetTypes: adapter?.supportedAssetTypes ?? null,
+    adapter, // SPI v1.1: plan-side hash = transformed hash (cross-stage invariant)
   });
   return { plan, manifest: m, state, targetRoot, adapterId: adapter?.id || null };
 }
@@ -250,9 +251,24 @@ export async function install({
     const stagingRunId = `${process.pid}-${Date.now()}`;
     const stagingDir = makeStagingDir(targetRoot, stagingRunId);
     const filesToWrite = plan.files.filter((f) => f.action === "create" || f.action === "overwrite-managed" || f.action === "conflict-unmanaged");
+    // Capture each stageAsset result so state records the hash of the bytes
+    // ACTUALLY written (stage-side), not just the plan-side hash. For a pure
+    // transform these are identical (ADR-0002 D2); if a downstream adapter's
+    // transform were impure, recording the stage-side hash keeps state
+    // self-consistent with disk (tamper-detection stays correct) instead of
+    // perpetually false-flagging. Symmetric with update/repair, which
+    // already record their staged hash.
+    const stagedHashes = new Map();
     for (const f of filesToWrite) {
-      const buf = fs.readFileSync(f.sourceAbs);
-      stageWrite(stagingDir, f.targetRel, buf);
+      // stageAsset re-runs the same adapter transform the plan hashed, so the
+      // staged bytes match plan.files[].sha256 (cross-stage invariant, ADR-0002 D2).
+      const res = stageAsset({
+        asset: { assetType: f.assetType, id: f.ownerSelection, sourceRelPath: f.sourcePath, sourceAbs: f.sourceAbs },
+        adapter,
+        stagingDir,
+        targetRel: f.targetRel,
+      });
+      stagedHashes.set(f.targetRel, res);
     }
 
     snapshotStateBak(targetRoot);
@@ -266,26 +282,34 @@ export async function install({
         selectionKind: kind,
         installMode,
         installerVersion,
-        files: files.map((f) => ({
+        files: files.map((f) => {
+          const staged = stagedHashes.get(f.targetRel);
+          return {
           relPath: f.targetRel,
-          sha256: f.sha256,
-          algo: f.algo,
-          normalization: f.normalization,
-          bytes: f.bytes,
+          sha256: staged ? staged.sha256 : f.sha256,
+          algo: staged ? staged.algo : f.algo,
+          normalization: staged ? staged.normalization : f.normalization,
+          bytes: staged ? staged.bytes : f.bytes,
           mode: f.mode,
           sourceRelPath: f.sourcePath,
           sourceCommit,
           assetType: f.assetType,
           bundleMembership: kind === "bundle" ? [selectionId] : undefined,
-        })),
+          };
+        }),
         now,
         requestedBy,
       });
     }
 
     const writeRels = filesToWrite.map((f) => f.targetRel);
-    promoteStagedFiles(stagingDir, targetRoot, writeRels);
+    // Write state BEFORE promoting to disk (same discipline as uninstall's
+    // writeStateAtomic→deleteFiles). A crash between these leaves state
+    // ahead of disk → doctor/repair reports the files as *missing*
+    // (accurate, re-repairable) instead of *tampered* (false-block) — the
+    // same state↔disk consistency the repair re-hash fix establishes.
     await writeStateAtomic(targetRoot, postState);
+    promoteStagedFiles(stagingDir, targetRoot, writeRels);
 
     try {
       const bak = path.join(stateDirFor(targetRoot), STATE_BAK);
@@ -375,6 +399,7 @@ export async function updateMulti({
   force = false,
   acceptModified = [],
   dryRun = false,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -394,6 +419,7 @@ export async function updateMulti({
         force,
         acceptModified,
         dryRun,
+        productConfig,
         env,
         now,
       });
@@ -419,6 +445,7 @@ export async function uninstallMulti({
   force = false,
   acceptModified = [],
   dryRun = false,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -439,6 +466,7 @@ export async function uninstallMulti({
         force,
         acceptModified,
         dryRun,
+        productConfig,
         env,
         now,
       });
@@ -477,6 +505,7 @@ export async function uninstall({
   acceptModified = [],
   dryRun = false,
   installerVersion,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -583,6 +612,7 @@ export async function update({
   acceptModified = [],
   dryRun = false,
   installerVersion,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -614,7 +644,13 @@ export async function update({
         sourceMissing.push(mf.relPath);
         continue;
       }
-      const newHash = hashFile(sourceAbs);
+      // Transformed hash (identity when no adapter transform) so drift
+      // detection compares against the same bytes stageAsset will write.
+      const newHash = hashTransformed({
+        asset: { assetType: mf.assetType, id: mf.relPath, sourceRelPath: mf.sourceRelPath, sourceAbs },
+        adapter,
+        stage: "plan",
+      });
       if (newHash.sha256 === mf.sha256) continue;
 
       const targetAbs = path.resolve(targetRoot, mf.relPath);
@@ -661,8 +697,12 @@ export async function update({
     const stagingRunId = `${process.pid}-${Date.now()}`;
     const stagingDir = makeStagingDir(targetRoot, stagingRunId);
     for (const c of candidates) {
-      const buf = fs.readFileSync(c.sourceAbs);
-      stageWrite(stagingDir, c.mf.relPath, buf);
+      stageAsset({
+        asset: { assetType: c.mf.assetType, id: c.mf.relPath, sourceRelPath: c.mf.sourceRelPath, sourceAbs: c.sourceAbs },
+        adapter,
+        stagingDir,
+        targetRel: c.mf.relPath,
+      });
     }
 
     snapshotStateBak(targetRoot);
@@ -688,8 +728,10 @@ export async function update({
       }),
     };
 
-    promoteStagedFiles(stagingDir, targetRoot, updatedRels);
+    // Write state before promote (crash → state-ahead-of-disk is the
+    // recoverable failure mode; see install for rationale).
     await writeStateAtomic(targetRoot, nextState);
+    promoteStagedFiles(stagingDir, targetRoot, updatedRels);
 
     try {
       const bak = path.join(stateDirFor(targetRoot), STATE_BAK);
@@ -892,6 +934,7 @@ export async function repair({
   apply = false,
   acceptModified = [],
   installerVersion,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -943,17 +986,49 @@ export async function repair({
       };
     }
 
+    const mfByRel = new Map(state.managedFiles.map((m) => [m.relPath, m]));
     const stagingRunId = `${process.pid}-${Date.now()}`;
     const stagingDir = makeStagingDir(targetRoot, stagingRunId);
+    const recopyResults = new Map();
     for (const item of toRecopy) {
-      const buf = fs.readFileSync(item.sourceAbs);
-      stageWrite(stagingDir, item.relPath, buf);
+      const mf = mfByRel.get(item.relPath);
+      const res = stageAsset({
+        asset: { assetType: mf?.assetType, id: item.relPath, sourceRelPath: item.sourceRelPath, sourceAbs: item.sourceAbs },
+        adapter,
+        stagingDir,
+        targetRel: item.relPath,
+      });
+      recopyResults.set(item.relPath, res);
     }
 
     snapshotStateBak(targetRoot);
 
-    // No state.json mutation needed — managed files keep their existing sha256/sourceRelPath.
-    // We just restore disk content. The next `update` will re-hash if sources have moved on.
+    // Bug fix (ADR-0003): record the freshly-staged (transformed) hash so
+    // state.json matches the bytes repair just wrote. The old behavior kept
+    // the prior sha256, leaving state describing neither disk nor current
+    // source — which made the NEXT `update` false-flag the just-repaired
+    // file as tampered and block. repair restores to CURRENT source (it
+    // always did); recording the hash makes state honest about that.
+    const nextState = {
+      ...state,
+      managedFiles: state.managedFiles.map((mf) => {
+        const r = recopyResults.get(mf.relPath);
+        if (!r) return mf;
+        return {
+          ...mf,
+          sha256: r.sha256,
+          algo: r.algo,
+          normalization: r.normalization,
+          bytes: r.bytes,
+        };
+      }),
+    };
+
+    // Write state before promote (crash → state-ahead-of-disk is the
+    // recoverable failure mode; see install for rationale). This closes the
+    // crash-window that would otherwise re-introduce the false-tamper this
+    // very re-hash fix exists to remove.
+    await writeStateAtomic(targetRoot, nextState);
     promoteStagedFiles(stagingDir, targetRoot, toRecopy.map((i) => i.relPath));
 
     try {
@@ -1026,7 +1101,7 @@ function scanForDrift(state, targetRoot, repoRoot) {
  * target machine gets whatever the current repo manifest says, not a frozen
  * copy from the source machine.
  */
-export function exportCommand({ repoRoot, adapterId, target, env = process.env, now = nowIso() } = {}) {
+export function exportCommand({ repoRoot, adapterId, target, productConfig, env = process.env, now = nowIso() } = {}) {
   const { adapter, targetRoot } = resolveAdapterAndTarget({ adapterId, target, env, productConfig });
   const state = readState(targetRoot);
   if (!state) {
@@ -1062,6 +1137,7 @@ export async function importCommand({
   dryRun = false,
   overwriteUnmanaged = false,
   allowNoCli = false,
+  productConfig,
   env = process.env,
   now = nowIso(),
 } = {}) {
@@ -1085,6 +1161,7 @@ export async function importCommand({
     overwriteUnmanaged,
     allowNoCli,
     requestedBy: "cli",
+    productConfig,
     env,
     now,
   });

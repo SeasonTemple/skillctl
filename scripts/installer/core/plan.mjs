@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { hashFile, isLikelyText } from "./filesystem.mjs";
+import { hashBytes, isLikelyText } from "./filesystem.mjs";
 import { findManagedFile } from "./state.mjs";
 import { getAssetType } from "./asset-types.mjs";
 import {
+  AdapterError,
   ERR_ARGS,
   ERR_UNKNOWN_SELECTION,
   ERR_REPO_ONLY,
@@ -12,6 +13,7 @@ import {
   ERR_UNKNOWN_AGENT,
   ERR_UNKNOWN_RULE,
   ERR_ASSET_TYPE,
+  ERR_TRANSFORM_FAILED,
 } from "./errors.mjs";
 
 export class PlanError extends Error {
@@ -85,6 +87,57 @@ export function defaultTargetMapping(manifest /*, repoRoot */) {
   };
 }
 
+/**
+ * SPI v1.1 content-transform compose primitive (core-internal — NOT
+ * re-exported via index.mjs; production callers go through
+ * core/stage-asset.mjs, which composes this).
+ *
+ * Runs the adapter's `transformAssetContent` hook (or identity when absent)
+ * over the asset's source bytes. The `transformed` flag is computed by
+ * Buffer reference equality: an identity hook returns the input Buffer
+ * unchanged, so `resultBuf === sourceBuf` ⇒ `transformed: false`.
+ *
+ * A hook throw or a non-Buffer return surfaces as
+ * `AdapterError(ERR_TRANSFORM_FAILED)` carrying
+ * `.details = { adapterId, assetId, assetType, stage, cause }`. `stage`
+ * ("plan" | "stage") is supplied by the caller for provenance and does not
+ * fork the error identity.
+ *
+ * @param {{assetType:string,id:string,sourceRelPath?:string,sourceAbs?:string,sourceBuf?:Buffer}} asset
+ * @param {((asset:object, body:Buffer)=>Buffer)|undefined} transformFn
+ * @param {{adapterId?:string|null, stage:"plan"|"stage"}} opts
+ * @returns {{resultBuf:Buffer, transformed:boolean}}
+ */
+export function applyAdapterTransform(asset, transformFn, { adapterId = null, stage } = {}) {
+  const sourceBuf = asset.sourceBuf ?? fs.readFileSync(asset.sourceAbs);
+  if (typeof transformFn !== "function") {
+    return { resultBuf: sourceBuf, transformed: false };
+  }
+  const hookAsset = {
+    assetType: asset.assetType,
+    id: asset.id,
+    sourceRelPath: asset.sourceRelPath,
+  };
+  let resultBuf;
+  try {
+    resultBuf = transformFn(hookAsset, sourceBuf);
+  } catch (cause) {
+    throw new AdapterError(
+      `adapter ${adapterId ?? "(unknown)"} transformAssetContent threw for ${asset.assetType} ${asset.id}`,
+      ERR_TRANSFORM_FAILED,
+      { adapterId, assetId: asset.id, assetType: asset.assetType, stage, cause }
+    );
+  }
+  if (!Buffer.isBuffer(resultBuf)) {
+    throw new AdapterError(
+      `adapter ${adapterId ?? "(unknown)"} transformAssetContent returned a non-Buffer (${typeof resultBuf}) for ${asset.assetType} ${asset.id}`,
+      ERR_TRANSFORM_FAILED,
+      { adapterId, assetId: asset.id, assetType: asset.assetType, stage, cause: null }
+    );
+  }
+  return { resultBuf, transformed: resultBuf !== sourceBuf };
+}
+
 function walkSkillDir(skillDirAbs) {
   const out = [];
   const stack = [{ rel: "" }];
@@ -111,8 +164,23 @@ export function buildInstallPlan(manifest, selectionIds, options) {
     mapTargetPath = defaultTargetMapping(manifest, repoRoot),
     currentState = null,
     supportedAssetTypes = null, // null = all supported (backward-compat)
+    adapter = null,             // SPI v1.1: when present, plan-side hash is the TRANSFORMED hash
   } = options;
   if (!repoRoot || !targetRoot) throw new PlanError("repoRoot and targetRoot required", ERR_ARGS);
+
+  // Plan-side transformed hash. Composes the in-module applyAdapterTransform
+  // + hashBytes (NOT stage-asset.mjs's hashTransformed — that would create a
+  // plan.mjs ↔ stage-asset.mjs import cycle; see ADR-0003). Identity when no
+  // adapter / no transformAssetContent, so the recorded sha256 equals what
+  // stageAsset later writes (cross-stage invariant, ADR-0002 D2).
+  const hashSource = (assetType, id, sourceRelPath, sourceAbs) => {
+    const { resultBuf } = applyAdapterTransform(
+      { assetType, id, sourceRelPath, sourceAbs },
+      adapter?.transformAssetContent,
+      { adapterId: adapter?.id ?? null, stage: "plan" }
+    );
+    return hashBytes(resultBuf, { extension: path.extname(sourceAbs) });
+  };
 
   const transitive = transitiveAssets(manifest, selectionIds);
   const files = [];
@@ -134,7 +202,7 @@ export function buildInstallPlan(manifest, selectionIds, options) {
     for (const relSourcePath of inner) {
       const sourcePath = path.posix.join(skill.sourcePath, relSourcePath);
       const sourceAbs = path.resolve(repoRoot, sourcePath);
-      const hash = hashFile(sourceAbs);
+      const hash = hashSource("skill", skillId, sourcePath, sourceAbs);
       const targetRel = mapTargetPath({ assetType: "skill", id: skillId, skillDirname: skill.dirname, relSourcePath });
       files.push({
         sourcePath,
@@ -164,7 +232,7 @@ export function buildInstallPlan(manifest, selectionIds, options) {
     if (!fs.existsSync(sourceAbs)) {
       throw new PlanError(`agent source not found: ${agent.sourcePath}`, ERR_SOURCE_MISSING, { agentId });
     }
-    const hash = hashFile(sourceAbs);
+    const hash = hashSource("agent", agentId, agent.sourcePath, sourceAbs);
     const targetRel = mapTargetPath({ assetType: "agent", id: agentId });
     files.push({
       sourcePath: agent.sourcePath,
@@ -197,7 +265,7 @@ export function buildInstallPlan(manifest, selectionIds, options) {
     if (!fs.existsSync(sourceAbs)) {
       throw new PlanError(`rule source not found: ${rule.sourcePath}`, ERR_SOURCE_MISSING, { ruleKey });
     }
-    const hash = hashFile(sourceAbs);
+    const hash = hashSource("rule", ruleKey, rule.sourcePath, sourceAbs);
     const targetRel = mapTargetPath({ assetType: "rule", id: ruleKey });
     files.push({
       sourcePath: rule.sourcePath,

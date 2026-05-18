@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](./package.json)
 [![Type: ESM](https://img.shields.io/badge/type-ESM-f7df1e?logo=javascript&logoColor=black)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-101%20passing-2ea44f)](./scripts/installer/architecture.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-159%20passing-2ea44f)](./scripts/installer/architecture.test.mjs)
 
 [English](./README.md) · [中文](./README.zh-CN.md) · [Quick start](#30-second-quick-start) · [API](#public-api) · [Examples](./examples/sample-product/)
 

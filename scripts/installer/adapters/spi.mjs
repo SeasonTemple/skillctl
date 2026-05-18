@@ -1,4 +1,4 @@
-// Adapter SPI v1 contract — single source of truth.
+// Adapter SPI v1.1 contract — single source of truth.
 //
 // Required-4 fields (every adapter must export these):
 //   id            : string         unique identifier
@@ -6,7 +6,7 @@
 //   detectTargetRoot : ({override, env}) => string   target dir on this OS
 //   detectStatus  : ({override, env}) => StatusObject
 //
-// Optional-6 fields (kernel-provided defaults when missing):
+// Optional-8 fields (kernel-provided defaults when missing):
 //   mapTargetPath              : (asset, manifest, productConfig) => relPath
 //   supportedAssetTypes        : ["skill", "agent", "rule"] subset
 //   pluginInstallInstructions  : () => string
@@ -15,14 +15,20 @@
 //   cliInstallUrl              : string
 //   doctorProbes               : ({targetRoot, env, productConfig}) =>
 //                                  Array<{name, ok, detail}>
+//   transformAssetContent      : (asset, body: Buffer) => Buffer   (v1.1)
+//                                  Per-CLI content rewrite. Identity default.
+//                                  MUST be pure (no env/IO). Identity paths
+//                                  MUST return the input Buffer unchanged
+//                                  (reference-equality is observed).
 //
 // SPI evolution policy:
 //   - Minor versions: only add NEW optional fields with kernel defaults.
-//     Existing adapters continue to work.
+//     Existing adapters continue to work. (v1.1 added transformAssetContent.)
 //   - Major versions: may add new REQUIRED fields. Existing adapters must
 //     update to declare them.
 //   - String values of ERR_ADAPTER_INVALID / ERR_ADAPTER_ID_COLLISION /
-//     ERR_NO_ADAPTERS are part of the public stability contract.
+//     ERR_NO_ADAPTERS / ERR_TRANSFORM_FAILED are part of the public
+//     stability contract.
 //
 // Import side-effect ban (enforced by spi.test.mjs):
 //   Adapter modules must NOT perform any IO (env reads, whichSync calls,
@@ -65,6 +71,11 @@ export const SPI_DEFAULTS = Object.freeze({
   cliBinary: "",
   cliInstallUrl: "",
   doctorProbes: () => [],
+  // v1.1 — per-CLI content transform. Identity default returns the input
+  // Buffer UNCHANGED (same reference) so callers can detect "transformed"
+  // via reference equality. Adapters override only when the target CLI's
+  // on-disk shape diverges from the source.
+  transformAssetContent: (asset, body) => body,
 });
 
 const OPTIONAL_FIELDS = Object.freeze(Object.keys(SPI_DEFAULTS));
