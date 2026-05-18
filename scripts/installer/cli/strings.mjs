@@ -74,6 +74,204 @@ export const strings = Object.freeze({
   ${binName} plan --agent claude-code --bundle <bundle-id>
   ${binName} install --agent codex --skill ${prefix}:<skill-id> -y
   ${binName} uninstall --agent codex --skill ${prefix}:<skill-id> -y`,
+
+    // Per-verb usage blocks. Co-declared INSIDE this Object.freeze literal
+    // (strings.help is frozen — a post-freeze strings.help.verb = … would
+    // throw). Each key is a parameterized renderer per the catalog's
+    // function-key contract: ({ binName, prefix, adapterList }) => string.
+    // These render for `<verb> --help` and `help <verb>`; bare help / --help
+    // still render the composed full body via printHelp. Intentionally a
+    // verb-scoped flag subset, never the full table — the literal
+    // "Common flags:" appears only in flagsBlock and must NOT leak here
+    // (it is the full-vs-verb test discriminator).
+    verb: Object.freeze({
+      install: ({ binName, prefix, adapterList }) => `${binName} install — install selected skills/bundles into a target agent home
+
+Usage:
+  ${binName} install --agent <id> (--skill <ids…> | --bundle <ids…> | --all) [flags]
+
+Flags:
+  --agent, -a <id>      ${adapterList} (repeat or comma-separate for multi)
+  --skill, -s <ids…>    skill ids (repeat or comma-separate)
+  --bundle, -b <ids…>   bundle ids (manifest-defined; see 'list')
+  --all                 all installable standalone skills
+  --mode <plugin|direct>  install mode (default: direct)
+  --target <path>       explicit target root (single-agent only)
+  --overwrite           replace unmanaged files at target paths
+  --allow-no-cli        skip agent-CLI detection
+  --dry-run             preview plan, no writes
+  --yes, -y             non-interactive (required for scripted install)
+  --json                machine-readable output
+
+Examples:
+  ${binName} install --agent codex --skill ${prefix}:<skill-id> -y
+  ${binName} install --agent=codex,claude-code --all -y
+
+Run '${binName} help' for the complete reference.
+`,
+      uninstall: ({ binName, prefix, adapterList }) => `${binName} uninstall — remove managed files for selections (state-aware)
+
+Usage:
+  ${binName} uninstall --agent <id> (--skill <ids…> | --bundle <ids…>) [flags]
+
+Flags:
+  --agent, -a <id>      ${adapterList} (repeat or comma-separate for multi)
+  --skill, -s <ids…>    skill ids
+  --bundle, -b <ids…>   bundle ids
+  --force               bypass hash check (requires --accept-modified)
+  --accept-modified <relPath…>  per-file consent for --force
+  --dry-run             list files that would be deleted, no writes
+  --yes, -y             non-interactive (required for scripted uninstall)
+  --json                machine-readable output
+
+Hash protection: edited managed files block uninstall unless
+--force --accept-modified <relPath> is given per edited file.
+
+Example:
+  ${binName} uninstall --agent codex --skill ${prefix}:<skill-id> -y
+
+Run '${binName} help' for the complete reference.
+`,
+      update: ({ binName, adapterList }) => `${binName} update — refresh managed files whose source changed (hash-checked)
+
+Usage:
+  ${binName} update --agent <id> [flags]
+
+Flags:
+  --agent, -a <id>      ${adapterList} (repeat or comma-separate for multi)
+  --dry-run             preview which files would be refreshed
+  --force               overwrite locally-edited files (requires --accept-modified)
+  --accept-modified <relPath…>  per-file consent for --force
+  --json                machine-readable output
+
+Only source-changed, locally-unedited files are refreshed. Edited files
+block until explicitly accepted.
+
+Example:
+  ${binName} update --agent codex --dry-run
+
+Run '${binName} help' for the complete reference.
+`,
+      list: ({ binName }) => `${binName} list — list manifest assets and installed status
+
+Usage:
+  ${binName} list [--agent <id>] [--json]
+
+Flags:
+  --agent, -a <id>      annotate with that agent's installed markers
+  --json                machine-readable output
+
+Legend: [I]=installed  [ ]=installable  [-]=repo-only
+
+Run '${binName} help' for the complete reference.
+`,
+      plan: ({ binName }) => `${binName} plan — show the install plan without writing (--dry-run alias)
+
+Usage:
+  ${binName} plan --agent <id> (--skill <ids…> | --bundle <ids…>) [--json]
+
+Flags:
+  --agent, -a <id>      target agent
+  --skill, -s <ids…>    skill ids
+  --bundle, -b <ids…>   bundle ids
+  --target <path>       explicit target root
+  --json                machine-readable output (incl. sha256 + bytes)
+
+Example:
+  ${binName} plan --agent codex --bundle <bundle-id>
+
+Run '${binName} help' for the complete reference.
+`,
+      agents: ({ binName }) => `${binName} agents — detect supported agent targets and writable status
+
+Usage:
+  ${binName} agents [--print-path <id>] [--json]
+
+Flags:
+  --print-path <id>     print only that agent's target root (script-friendly)
+  --json                machine-readable output
+
+Example:
+  cd "$(${binName} agents --print-path codex)/skills"
+
+Run '${binName} help' for the complete reference.
+`,
+      doctor: ({ binName }) => `${binName} doctor — health-check installer environment per agent
+
+Usage:
+  ${binName} doctor [--agent <id>] [--json]
+
+Flags:
+  --agent, -a <id>      check a single agent (default: all)
+  --json                machine-readable output (exit 1 if any check fails)
+
+Checks: CLI presence, target writability, state schema, drift, locks.
+
+Run '${binName} help' for the complete reference.
+`,
+      repair: ({ binName }) => `${binName} repair — reconcile state.json against disk
+
+Usage:
+  ${binName} repair --agent <id> [--apply] [flags]
+
+Flags:
+  --agent, -a <id>      target agent
+  --apply               actually perform the repair (default: scan-only / read-only)
+  --accept-modified <relPath…>  allow recopy over a tampered file
+  --json                machine-readable output
+
+Default is a read-only scan. Pass --apply to re-copy missing files from source.
+
+Run '${binName} help' for the complete reference.
+`,
+      export: ({ binName }) => `${binName} export — dump installed selection set as JSON to stdout
+
+Usage:
+  ${binName} export --agent <id> [--target <path>]
+
+Flags:
+  --agent, -a <id>      target agent
+  --target <path>       explicit target root
+
+Portable across machines. Pair with 'import':
+  ${binName} export --agent codex > selections.json
+
+Run '${binName} help' for the complete reference.
+`,
+      import: ({ binName }) => `${binName} import — read selection-set JSON from stdin and install
+
+Usage:
+  ${binName} export --agent <id> | ${binName} import --agent <id> [flags]
+
+Flags:
+  --agent, -a <id>      target agent
+  --target <path>       explicit target root
+  --dry-run             preview plan, no writes
+  --overwrite           replace unmanaged files at target paths
+  --json                machine-readable output
+
+Reads the envelope on stdin (pipe 'export'). Files re-install from the
+destination's repo manifest, not a frozen snapshot.
+
+Run '${binName} help' for the complete reference.
+`,
+      validate: ({ binName }) => `${binName} validate — lint a single SKILL.md frontmatter
+
+Usage:
+  ${binName} validate <path/to/SKILL.md> [--json]
+
+Flags:
+  --json                machine-readable output (exit 1 on findings)
+
+Validates name, category enum, and non-empty description without
+scanning the whole skills/ tree.
+
+Example:
+  ${binName} validate path/to/draft/SKILL.md
+
+Run '${binName} help' for the complete reference.
+`,
+    }),
   }),
 
   errors: Object.freeze({
