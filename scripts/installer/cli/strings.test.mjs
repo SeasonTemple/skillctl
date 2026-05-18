@@ -28,7 +28,9 @@ const PARAMS = {
   displayName: "Stub", sym: "✓", name: "check",
 };
 
-const PRODUCT_LITERAL = /\b(skillctl|netops)\b/i;
+// Invariant: kernel strings embed no product literal — legacy names kept
+// as leak detectors, the post-rename mark `nexel` added (ADR-0007 / U5).
+const PRODUCT_LITERAL = /\b(skillctl|netops|nexel)\b/i;
 
 function walk(ns, nsName) {
   for (const [key, val] of Object.entries(ns)) {
@@ -46,6 +48,19 @@ function walk(ns, nsName) {
       `${nsName}.${key}() must not embed a product literal: ${out.slice(0, 80)}`);
   }
 }
+
+test("PRODUCT_LITERAL guard forbids the new mark `nexel` too, case-insensitively", () => {
+  // Invariant: kernel strings embed NO product literal — the legacy names
+  // (skillctl/netops) AND the post-rename mark (nexel). A bare token swap
+  // that dropped the legacy detectors or omitted nexel would silently
+  // lose coverage; the guard is additive, not a swap (ADR-0007 / plan U5).
+  for (const leak of ["skillctl", "netops", "nexel", "Nexel", "NEXEL", "NetOps"]) {
+    assert.ok(PRODUCT_LITERAL.test(`banner: ${leak} installer`),
+      `guard must catch the product literal "${leak}"`);
+  }
+  assert.ok(!PRODUCT_LITERAL.test("a product-agnostic kernel string"),
+    "guard must not false-positive on clean product-agnostic text");
+});
 
 test("strings: top-level namespaces are help, errors, run — all frozen", () => {
   assert.deepEqual(Object.keys(strings).sort(), ["errors", "help", "run"]);
