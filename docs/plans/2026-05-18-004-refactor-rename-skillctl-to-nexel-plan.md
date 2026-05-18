@@ -1,7 +1,7 @@
 ---
 title: "refactor: Rename skillctl → nexel and supersede ADR-0005 (2a)"
 type: refactor
-status: active
+status: completed
 date: 2026-05-18
 origin: docs/brainstorms/2026-05-18-rename-skillctl-to-nexel-requirements.md
 ---
