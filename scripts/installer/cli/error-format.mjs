@@ -30,7 +30,11 @@ export function handleError(e, args, { stdout = process.stdout, stderr = process
     return;
   }
   if (e?.code === "ERR_DIRECT_UNSUPPORTED") {
-    stderr.write(strings.errors.pluginInstructions({ message: e.message, instructions: e.pluginInstallInstructions }) + "\n");
+    if (args.json) {
+      stdout.write(JSON.stringify({ ok: false, error: e.code, message: e.message, details: { pluginInstallInstructions: e.pluginInstallInstructions } }) + "\n");
+    } else {
+      stderr.write(strings.errors.pluginInstructions({ message: e.message, instructions: e.pluginInstallInstructions }) + "\n");
+    }
     return;
   }
   if (e?.code === "ERR_AGENT_CLI_MISSING") {
@@ -42,7 +46,16 @@ export function handleError(e, args, { stdout = process.stdout, stderr = process
     return;
   }
   if (e?.code === "ERR_LOCKED") {
-    stderr.write(strings.errors.plain({ message: e.message }) + "\n");
+    if (args.json) {
+      stdout.write(JSON.stringify({ ok: false, error: e.code, message: e.message, details: e.details ?? {} }) + "\n");
+    } else {
+      stderr.write(strings.errors.plain({ message: e.message }) + "\n");
+    }
+    return;
+  }
+  // Generic fallback (untyped throw / no recognized code).
+  if (args.json) {
+    stdout.write(JSON.stringify({ ok: false, error: e?.code || "ERR_UNKNOWN", message: e?.message || String(e), details: e?.details ?? {} }) + "\n");
     return;
   }
   stderr.write(strings.errors.plain({ message: e?.message || e }) + "\n");
