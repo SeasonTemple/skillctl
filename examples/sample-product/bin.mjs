@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Sample bin — demonstrates how a downstream product wraps the
-// skillctl kernel:
+// nexel kernel:
 //   1. Load this product's ProductConfig from agent-skills.config.mjs.
 //   2. Import the kernel's createCli factory + adapter modules.
 //   3. Build a CLI bound to this product's identity + content layout.
@@ -8,11 +8,11 @@
 //
 // Real downstream products would publish this file as their npm `bin`
 // entry; users would invoke it as `<binName> install --agent codex`.
-// In this repo it lives under examples/ so the skillctl test suite
+// In this repo it lives under examples/ so the nexel test suite
 // can exercise the kernel against a real productConfig end-to-end.
 //
 // Driving this bin from an AI agent? The product-agnostic behavioral
-// contract every skillctl-derived bin honors (verbs, exit codes,
+// contract every nexel-derived bin honors (verbs, exit codes,
 // --json envelope, non-interactive flags, help affordances) is
 // documented in docs/AGENT-CLI-CONTRACT.md.
 

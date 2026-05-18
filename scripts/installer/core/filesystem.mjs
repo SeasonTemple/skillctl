@@ -151,7 +151,7 @@ export async function acquireLock(targetRoot, { staleMs = STALE_LOCK_MS, command
     });
   } catch (e) {
     if (e.code === "ELOCKED") {
-      throw new FsError(`target already locked by another skillctl run; lockfile at ${path.join(dir, LOCK_FILE)}`, ERR_LOCKED);
+      throw new FsError(`target already locked by another run; lockfile at ${path.join(dir, LOCK_FILE)}`, ERR_LOCKED);
     }
     throw e;
   }

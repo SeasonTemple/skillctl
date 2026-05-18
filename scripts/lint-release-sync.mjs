@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Read-only pre-release doc-sync linter.
 //
-// Mechanically enforces the deterministic subset of skillctl's release
+// Mechanically enforces the deterministic subset of nexel's release
 // discipline (the written spec lives in
 // docs/adr/0001-adopt-adr-practice-and-record-frozen-invariants.md D4).
 // Same risk class as lint-skills.mjs / manifest drift.mjs: it READS only —
@@ -16,14 +16,16 @@
 //
 // Deliberately ABSENT vs. the netops original:
 //   - The four-manifest version lockstep (.claude-plugin/marketplace.json,
-//     plugin.json x2). skillctl ships no plugin manifests — there is
+//     plugin.json x2). nexel ships no plugin manifests — there is
 //     nothing to lockstep.
-//   - The README release-badge check. skillctl has no static
+//   - The README release-badge check. nexel has no static
 //     `releases-vX.Y.Z` badge: its only version-bearing badge is the
-//     *dynamic* npm badge (shields.io/npm/v/skillctl) which (a) cannot
-//     drift (it is fetched, not hardcoded) and (b) points at an unrelated
-//     third-party npm package — see ADR-0005. A badge check would be both
-//     inapplicable and misleading. Rationale also recorded in ADR-0004.
+//     *dynamic* npm badge (shields.io/npm/v/skillctl — deliberately the
+//     unrelated third-party `skillctl` package, NOT this project) which
+//     (a) cannot drift (it is fetched, not hardcoded) and (b) points at
+//     that third-party package on purpose — see ADR-0007 (which supersedes
+//     ADR-0005). A badge check would be both inapplicable and misleading.
+//     Rationale also recorded in ADR-0004.
 //
 // Usage:
 //   node scripts/lint-release-sync.mjs            # text report, exit 0/1
