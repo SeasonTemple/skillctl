@@ -75,7 +75,7 @@ The full suite is the `test` script in `package.json` (run `npm test`). It is th
 
 Coverage is layered: per-module unit tests (`errors`, `asset-types`, `which`, `plan`, `stage-asset`, `manifest/{loader,validator,drift}`), adapter conformance (`spi`, `opencode`), CLI surface (`argv`, `dispatch`, `lint-skills`, `lint-release-sync`), the Z-layer guard (`architecture`), and end-to-end witnesses bound to `examples/sample-product/` (`sample-bin`, `cli/commands/repair-rehash`).
 
-The legacy-product-coupled tests dropped during the OSS strip were rebuilt against `examples/sample-product/`. Product-coupled CLI tests (`commands`/`cli`/`help`/`strings`/`prompts`) remain a deferred follow-up sweep as the fixture stabilizes.
+The legacy-product-coupled tests dropped during the OSS strip were rebuilt against `examples/sample-product/`. The ADR-0004-deferred product-coupled sweep is **delivered** (v0.4.0, plan `docs/plans/2026-05-18-003-...`): `commands` (`cli/commands/index`), `prompts`, `strings` unit suites + `run`/`cli` spawn-E2E expansion in `sample-bin`, plus `help`/`error-format` covered earlier (v0.3.0/v0.3.1). Two items remain explicitly deferred: a typed-error loader layer (loader.mjs is pure IO+parse by design; typing is the validator/CLI layer's job) and `renderNextSteps`' stale product-specific bin-path literal (needs a ProductConfig/caller seam).
 
 ## Adding a new skill (when working inside a downstream product, not this repo)
 
